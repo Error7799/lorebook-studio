@@ -1,0 +1,664 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lorebook Studio — Editor</title>
+<style>
+  /* Design tokens — kept in step with the Maker so the two halves of the
+     studio read as one app. */
+  :root {
+    --bg: #14100e; --panel: #1f1a17; --panel2: #272020; --border: #3d322d;
+    --border-soft: #2f2724;
+    --text: #f5efe9; --text-dim: #c8bcb2; --muted: #9a8d84;
+    --accent: #ff9a62; --accent2: #f2743a; --accent-deep: #c94f1c;
+    --accent-wash: rgba(255,154,98,.13); --accent-line: rgba(255,154,98,.34);
+    --green: #3ddc9a; --yellow: #fbbf24; --red: #fb7185; --blue: #60a5fa;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+    --shadow: 0 4px 16px rgba(0,0,0,.35);
+    --shadow-lg: 0 18px 50px rgba(0,0,0,.55);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  a { color: var(--accent); }
+  header { padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap; position: sticky; top: 0; z-index: 20; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  .logo { color: var(--accent); }
+  .nav { display: flex; gap: 4px; margin-left: 8px; }
+  .nav a { text-decoration: none; padding: 5px 12px; border-radius: 8px; color: var(--muted);
+    border: 1px solid transparent; font-size: 13px; }
+  .nav a:hover { color: var(--text); border-color: var(--border); }
+  .nav a.active { color: var(--accent); border-color: var(--accent2); background: var(--panel2); }
+  .grow { flex: 1; }
+  button, select, input { font: inherit; color: var(--text); }
+  button { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 13px; cursor: pointer; transition: .12s; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent2); border-color: var(--accent2); }
+  button.primary:hover { background: var(--accent); }
+  button.danger:hover { border-color: var(--red); color: var(--red); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  input[type=text], input[type=search], select, textarea {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .wrap { padding: 16px 20px; max-width: 1400px; margin: 0 auto; }
+
+  /* Load screen */
+  #loader { max-width: 640px; margin: 60px auto; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 30px; }
+  #loader h2 { margin-top: 0; }
+  .field { margin: 14px 0; }
+  .field label { display: block; color: var(--muted); margin-bottom: 5px; font-size: 13px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .drop { border: 2px dashed var(--border); border-radius: 12px; padding: 26px; text-align: center;
+    color: var(--muted); cursor: pointer; transition: .15s; }
+  .drop.hot { border-color: var(--accent); color: var(--text); background: var(--panel2); }
+
+  /* Stats */
+  .stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 9px 14px; min-width: 90px; }
+  .stat b { font-size: 19px; display: block; }
+  .stat span { color: var(--muted); font-size: 12px; }
+
+  /* Toolbar */
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .toolbar input[type=search] { min-width: 200px; }
+  .chk { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 13px;
+    cursor: pointer; user-select: none; }
+  .bulkbar { background: var(--panel2); border: 1px solid var(--accent2); border-radius: 10px;
+    padding: 10px 14px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .bulkbar .count { color: var(--accent); font-weight: 600; }
+  .vsep { width: 1px; height: 22px; background: var(--border); }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+    cursor: pointer; user-select: none; position: sticky; top: 61px; background: var(--panel); z-index: 10; }
+  tr:hover td { background: var(--panel2); }
+  td.comment { font-weight: 550; }
+  .keys { color: var(--muted); font-size: 12px; }
+  .prefix-tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 20px;
+    background: var(--panel2); border: 1px solid var(--border); color: var(--muted); margin-right: 6px; }
+  .disabled td { opacity: .45; }
+
+  /* Strategy pill dropdown */
+  .strat { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .dot.normal { background: var(--green); } .dot.constant { background: var(--yellow); }
+  .dot.selective { background: var(--red); } .dot.vectorized { background: var(--blue); }
+  select.strat-sel { padding: 4px 8px; }
+
+  .toggle { width: 38px; height: 20px; border-radius: 20px; background: var(--border); position: relative;
+    cursor: pointer; transition: .15s; }
+  .toggle.on { background: var(--accent2); }
+  .toggle::after { content: ""; position: absolute; width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; top: 2px; left: 2px; transition: .15s; }
+  .toggle.on::after { left: 20px; }
+
+  /* Drawer */
+  .drawer { position: fixed; top: 0; right: 0; width: 560px; max-width: 92vw; height: 100vh;
+    background: var(--panel); border-left: 1px solid var(--border); transform: translateX(100%);
+    transition: .2s; z-index: 40; overflow-y: auto; padding: 20px; }
+  .drawer.open { transform: none; }
+  .drawer textarea { width: 100%; min-height: 200px; resize: vertical; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 35; display: none; }
+  .backdrop.open { display: block; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: var(--panel2); border: 1px solid var(--accent); border-radius: 10px; padding: 11px 18px;
+    z-index: 60; opacity: 0; transition: .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .hidden { display: none !important; }
+  .muted { color: var(--muted); }
+  /* ── Shared polish (matches the Maker) ───────────────────────────────── */
+  body {
+    background-image:
+      radial-gradient(1100px 620px at 12% -8%, rgba(124,77,209,.16), transparent 62%),
+      radial-gradient(900px 520px at 92% 4%, rgba(61,220,154,.06), transparent 58%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: rgba(255,154,98,.32); color: #fff; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  header {
+    background: rgba(21,20,29,.82);
+    backdrop-filter: blur(14px) saturate(1.3);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    border-bottom-color: var(--border-soft);
+  }
+  header h1 { letter-spacing: -.01em; }
+  .logo { filter: drop-shadow(0 0 10px rgba(255,154,98,.55)); }
+
+  .nav {
+    background: rgba(0,0,0,.28);
+    padding: 3px;
+    border-radius: 10px;
+    border: 1px solid var(--border-soft);
+    gap: 3px;
+    margin-left: 10px;
+  }
+  .nav a { border: none; border-radius: 7px; font-weight: 600; padding: 5px 13px; }
+  .nav a:hover { background: rgba(255,255,255,.04); border: none; }
+  .nav a.active {
+    color: #fff;
+    background: linear-gradient(180deg, var(--accent2), var(--accent-deep));
+    border: none;
+    box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.16);
+  }
+
+  button {
+    border-radius: 8px;
+    font-weight: 600;
+    transition: transform .15s, box-shadow .18s, background .18s, border-color .18s, color .18s;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent-line); background: var(--accent-wash); }
+  button:active:not(:disabled) { transform: scale(.99); }
+  button.primary {
+    background: linear-gradient(180deg, var(--accent2), var(--accent-deep));
+    border-color: transparent;
+    color: #fff;
+    box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.18);
+  }
+  button.primary:hover:not(:disabled) {
+    background: linear-gradient(180deg, #8f5ce4, #6a3dbb);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 26px rgba(124,77,209,.45), inset 0 1px 0 rgba(255,255,255,.22);
+  }
+  button.danger:hover:not(:disabled) {
+    border-color: rgba(251,113,133,.5);
+    background: rgba(251,113,133,.12);
+    color: var(--red);
+  }
+
+  input[type=text], input[type=search], select, textarea {
+    background: #14131c;
+    border-radius: 8px;
+    transition: border-color .18s, box-shadow .18s, background .18s;
+  }
+  input::placeholder, textarea::placeholder { color: #6b6780; }
+  input:hover, select:hover, textarea:hover { border-color: #45415a; }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+    background: #171622;
+    box-shadow: 0 0 0 3px var(--accent-wash);
+  }
+
+  #loader {
+    background: linear-gradient(180deg, var(--panel), #16151f);
+    border-color: var(--border-soft);
+    border-radius: 16px;
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.035);
+  }
+
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: #38344a; border-radius: 99px;
+    border: 2px solid transparent; background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: #4b4664; background-clip: content-box; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  }
+</style>
+
+<header>
+  <h1><span class="logo">✦</span> Lorebook Studio</h1>
+  <nav class="nav">
+    <a href="/maker">⚒ Maker</a>
+    <a href="/editor" class="active">✎ Editor</a>
+  </nav>
+  <span id="fileName" class="muted"></span>
+  <span id="dirtyFlag" class="hidden" style="color:var(--yellow)">● unsaved</span>
+  <div class="grow"></div>
+  <button id="addInMaker" class="hidden" title="Open this lorebook in the Maker to scrape more entries onto it">⚒ Add entries</button>
+  <button id="undoBtn" class="hidden" disabled>↩ Undo</button>
+  <button id="closeBook" class="hidden">Close</button>
+  <button id="saveDownload" class="hidden">⬇ Download</button>
+  <button id="saveInplace" class="primary hidden">💾 Save in place</button>
+</header>
+
+<!-- LOAD SCREEN -->
+<div id="loader">
+  <h2>Open a lorebook</h2>
+  <p class="muted">Load a SillyTavern / Marinara Engine World Info JSON, then bulk-edit
+     entry strategies (Normal / Constant / Selective / Vectorized) and more.
+     Or build one from scratch in the <a href="/maker">Maker</a>.</p>
+  <div class="drop" id="drop">Drop a <b>.json</b> here, or click to browse
+    <input type="file" id="fileInput" accept=".json" class="hidden">
+  </div>
+  <div class="field">
+    <label>…or load by full path (<code>~</code> works on macOS/Linux)</label>
+    <div class="row">
+      <input type="text" id="pathInput" class="grow" style="flex:1"
+             placeholder="~/Downloads/lorebook.json  or  C:\Users\you\lorebook.json">
+      <button class="primary" id="loadPath">Load</button>
+    </div>
+  </div>
+  <div id="loadErr" style="color:var(--red)"></div>
+</div>
+
+<!-- MAIN EDITOR -->
+<div id="editor" class="wrap hidden">
+  <div class="stats" id="stats"></div>
+
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="Search…">
+    <select id="searchScope" title="Where to search">
+      <option value="all">Everywhere</option>
+      <option value="comment">Title only</option>
+      <option value="key">Keys only</option>
+      <option value="content">Content only</option>
+    </select>
+    <label class="chk"><input type="checkbox" id="searchRegex"> regex</label>
+    <select id="prefixFilter"><option value="">All groups</option></select>
+    <select id="stratFilter">
+      <option value="">All strategies</option>
+      <option value="normal">🟢 Normal</option>
+      <option value="constant">🟡 Constant</option>
+      <option value="selective">🔴 Selective</option>
+      <option value="vectorized">🔵 Vectorized</option>
+    </select>
+    <select id="posFilter">
+      <option value="">All positions</option>
+      <option value="0">↑ Before char</option>
+      <option value="1">↓ After char</option>
+      <option value="2">Top of AN</option>
+      <option value="3">Bottom of AN</option>
+      <option value="4">At depth</option>
+    </select>
+    <select id="stateFilter">
+      <option value="">Enabled + disabled</option>
+      <option value="enabled">Enabled only</option>
+      <option value="disabled">Disabled only</option>
+    </select>
+    <button id="clearFilters" title="Reset all filters">✕ Reset</button>
+    <div class="grow"></div>
+    <button id="dupBtn">🔍 Find duplicate keys</button>
+    <button id="addBtn">＋ Add entry</button>
+  </div>
+
+  <div class="bulkbar">
+    <label class="row" style="gap:6px"><input type="checkbox" id="selAll"> Select all shown</label>
+    <button id="selInvert" title="Invert selection among shown rows">⇄ Invert</button>
+    <span class="count" id="selCount">0 selected</span>
+    <div class="vsep"></div>
+    <span class="muted">Set strategy →</span>
+    <button data-strat="normal">🟢 Normal</button>
+    <button data-strat="constant">🟡 Constant</button>
+    <button data-strat="selective">🔴 Selective</button>
+    <button data-strat="vectorized">🔵 Vectorized</button>
+    <div class="vsep"></div>
+    <button id="bulkEnable">Enable</button>
+    <button id="bulkDisable">Disable</button>
+    <button id="bulkReplace">Find &amp; replace…</button>
+    <button id="bulkField">Set field…</button>
+    <button id="bulkDelete" class="danger">Delete</button>
+  </div>
+
+  <table>
+    <thead><tr>
+      <th style="width:34px"></th>
+      <th data-sort="comment">Entry</th>
+      <th data-sort="strategy" style="width:150px">Strategy</th>
+      <th data-sort="order" style="width:70px">Order</th>
+      <th data-sort="depth" style="width:70px">Depth</th>
+      <th data-sort="probability" style="width:70px">Prob %</th>
+      <th data-sort="content_len" style="width:80px">Size</th>
+      <th style="width:70px">On</th>
+      <th style="width:60px"></th>
+    </tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <p class="muted" id="tableInfo" style="margin-top:10px"></p>
+</div>
+
+<!-- EDIT DRAWER -->
+<div class="backdrop" id="backdrop"></div>
+<div class="drawer" id="drawer">
+  <div class="row"><h2 style="margin:0;flex:1" id="drawerTitle">Edit entry</h2>
+    <button id="drawerClose">✕</button></div>
+  <div class="field"><label>Title / comment</label><input type="text" id="d_comment"></div>
+  <div class="field"><label>Primary keys (comma-separated)</label><input type="text" id="d_key"></div>
+  <div class="field"><label>Secondary keys (comma-separated)</label><input type="text" id="d_keysecondary"></div>
+  <div class="grid2">
+    <div class="field"><label>Strategy</label>
+      <select id="d_strategy">
+        <option value="normal">🟢 Normal</option><option value="constant">🟡 Constant</option>
+        <option value="selective">🔴 Selective</option><option value="vectorized">🔵 Vectorized</option>
+      </select></div>
+    <div class="field"><label>Selective logic</label>
+      <select id="d_selectiveLogic">
+        <option value="0">AND ANY</option><option value="1">NOT ALL</option>
+        <option value="2">NOT ANY</option><option value="3">AND ALL</option>
+      </select></div>
+    <div class="field"><label>Order</label><input type="text" id="d_order"></div>
+    <div class="field"><label>Depth</label><input type="text" id="d_depth"></div>
+    <div class="field"><label>Position</label>
+      <select id="d_position">
+        <option value="0">↑ Before char</option><option value="1">↓ After char</option>
+        <option value="2">Top of AN</option><option value="3">Bottom of AN</option>
+        <option value="4">At depth</option>
+      </select></div>
+    <div class="field"><label>Probability %</label><input type="text" id="d_probability"></div>
+    <div class="field"><label>Group</label><input type="text" id="d_group"></div>
+  </div>
+  <div class="field"><label>Content</label><textarea id="d_content"></textarea></div>
+  <div class="row"><button class="primary" id="d_save">Save entry</button>
+    <button class="danger" id="d_delete">Delete</button></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = (u, o) => fetch(u, o).then(r => r.json());
+let ENTRIES = [], SORT = {col: "order", dir: 1}, SELECTED = new Set(), CUR_UID = null;
+
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("show"), 2200); }
+function setDirty(d) { $("#dirtyFlag").classList.toggle("hidden", !d); }
+function setUndo(can) { $("#undoBtn").disabled = !can; }
+
+// ---- Loading ----
+const drop = $("#drop"), fileInput = $("#fileInput");
+drop.onclick = () => fileInput.click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("hot"); };
+drop.ondragleave = () => drop.classList.remove("hot");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("hot");
+  if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]); };
+fileInput.onchange = () => fileInput.files[0] && uploadFile(fileInput.files[0]);
+
+async function uploadFile(f) {
+  const fd = new FormData(); fd.append("file", f);
+  const r = await api("/api/editor/load", {method: "POST", body: fd});
+  r.error ? ($("#loadErr").textContent = r.error) : openBook(r);
+}
+$("#loadPath").onclick = async () => {
+  const r = await api("/api/editor/load", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({path: $("#pathInput").value})});
+  r.error ? ($("#loadErr").textContent = r.error) : openBook(r);
+};
+
+function openBook(info) {
+  $("#loader").classList.add("hidden");
+  $("#editor").classList.remove("hidden");
+  ["addInMaker", "undoBtn", "closeBook", "saveDownload", "saveInplace"].forEach(id => $("#" + id).classList.remove("hidden"));
+  $("#fileName").textContent = info.name + "  ·  " + info.count + " entries";
+  if (!info.path) $("#saveInplace").classList.add("hidden"); // no on-disk path → download only
+  refresh();
+}
+$("#closeBook").onclick = () => location.reload();
+
+// If a book is already loaded server-side (e.g. sent over from the Maker), open it.
+(async () => {
+  const d = await api("/api/editor/entries");
+  if (d.name) openBook({name: d.name, path: d.path, count: d.entries.length});
+})();
+
+// ---- Data ----
+async function refresh() {
+  const d = await api("/api/editor/entries");
+  ENTRIES = d.entries; setDirty(d.dirty); setUndo(d.can_undo);
+  const prefixes = [...new Set(ENTRIES.map(e => e.prefix).filter(Boolean))].sort();
+  const pf = $("#prefixFilter"); const cur = pf.value;
+  pf.innerHTML = '<option value="">All groups</option>' +
+    prefixes.map(p => `<option>${esc(p)}</option>`).join("");
+  pf.value = cur;
+  loadStats(); render();
+}
+async function loadStats() {
+  const s = await api("/api/editor/stats");
+  const by = s.by_strategy;
+  $("#stats").innerHTML = [
+    ["Entries", s.count], ["🟢 Normal", by.normal || 0], ["🟡 Constant", by.constant || 0],
+    ["🔴 Selective", by.selective || 0], ["🔵 Vectorized", by.vectorized || 0],
+    ["Disabled", s.disabled], ["≈ Tokens", (s.approx_tokens).toLocaleString()],
+  ].map(([l, v]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+}
+
+function matcher() {
+  const q = $("#search").value;
+  if (!q) return null;
+  if ($("#searchRegex").checked) {
+    try { const re = new RegExp(q, "i"); return s => re.test(s); }
+    catch { return null; } // invalid regex → don't filter
+  }
+  const lq = q.toLowerCase();
+  return s => s.toLowerCase().includes(lq);
+}
+
+function filtered() {
+  const match = matcher();
+  const scope = $("#searchScope").value;
+  const pf = $("#prefixFilter").value, sf = $("#stratFilter").value;
+  const st = $("#stateFilter").value, pos = $("#posFilter").value;
+  let rows = ENTRIES.filter(e => {
+    if (pf && e.prefix !== pf) return false;
+    if (sf && e.strategy !== sf) return false;
+    if (pos !== "" && String(e.position) !== pos) return false;
+    if (st === "enabled" && e.disable) return false;
+    if (st === "disabled" && !e.disable) return false;
+    if (match) {
+      const hay = scope === "comment" ? e.comment
+        : scope === "key" ? e.key.concat(e.keysecondary).join(" ")
+        : scope === "content" ? e.content_preview
+        : e.comment + " " + e.key.join(" ") + " " + e.content_preview;
+      if (!match(hay)) return false;
+    }
+    return true;
+  });
+  const {col, dir} = SORT;
+  rows.sort((a, b) => {
+    let x = a[col], y = b[col];
+    if (typeof x === "string") return x.localeCompare(y) * dir;
+    return ((x ?? 0) - (y ?? 0)) * dir;
+  });
+  return rows;
+}
+
+const STRAT_OPTS = {normal: "🟢 Normal", constant: "🟡 Constant",
+  selective: "🔴 Selective", vectorized: "🔵 Vectorized"};
+
+function render() {
+  const rows = filtered();
+  $("#tbody").innerHTML = rows.map(e => {
+    const opts = Object.entries(STRAT_OPTS).map(([v, l]) =>
+      `<option value="${v}" ${e.strategy === v ? "selected" : ""}>${l}</option>`).join("");
+    return `<tr class="${e.disable ? "disabled" : ""}" data-uid="${e.uid}">
+      <td><input type="checkbox" class="rowsel" ${SELECTED.has(e.uid) ? "checked" : ""}></td>
+      <td class="comment">${e.prefix ? `<span class="prefix-tag">${esc(e.prefix)}</span>` : ""}
+        ${esc(e.comment.replace(e.prefix + ":", "").trim() || e.comment)}
+        <div class="keys">${esc(e.key.slice(0, 6).join(", "))}${e.key.length > 6 ? "…" : ""}</div></td>
+      <td><span class="strat"><span class="dot ${e.strategy}"></span>
+        <select class="strat-sel" data-uid="${e.uid}">${opts}</select></span></td>
+      <td>${e.order}</td><td>${e.depth}</td><td>${e.probability}</td>
+      <td>${e.content_len.toLocaleString()}</td>
+      <td><div class="toggle ${e.disable ? "" : "on"}" data-uid="${e.uid}"></div></td>
+      <td><button class="editBtn" data-uid="${e.uid}">✎</button></td>
+    </tr>`;
+  }).join("");
+  $("#tableInfo").textContent = `Showing ${rows.length} of ${ENTRIES.length} entries`;
+  updateSelCount();
+}
+const esc = s => (s || "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+// ---- Row interactions (event delegation) ----
+$("#tbody").addEventListener("change", async e => {
+  const uid = e.target.dataset.uid ?? e.target.closest("tr")?.dataset.uid;
+  if (e.target.classList.contains("strat-sel")) {
+    await api(`/api/editor/entry/${uid}`, {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({strategy: e.target.value})});
+    setDirty(true); setUndo(true); loadStats();
+    const row = e.target.closest("tr"); row.querySelector(".dot").className = "dot " + e.target.value;
+    const ent = ENTRIES.find(x => x.uid == uid); if (ent) ent.strategy = e.target.value;
+  } else if (e.target.classList.contains("rowsel")) {
+    e.target.checked ? SELECTED.add(+uid) : SELECTED.delete(+uid); updateSelCount();
+  }
+});
+$("#tbody").addEventListener("click", async e => {
+  const t = e.target;
+  if (t.classList.contains("toggle")) {
+    const uid = t.dataset.uid, on = t.classList.contains("on");
+    await api(`/api/editor/entry/${uid}`, {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({disable: on})});
+    t.classList.toggle("on"); t.closest("tr").classList.toggle("disabled");
+    const ent = ENTRIES.find(x => x.uid == uid); if (ent) ent.disable = on;
+    setDirty(true); setUndo(true); loadStats();
+  } else if (t.classList.contains("editBtn")) {
+    openDrawer(t.dataset.uid);
+  }
+});
+
+// ---- Filters / sort ----
+const FILTER_IDS = ["search", "searchScope", "searchRegex", "prefixFilter", "stratFilter", "posFilter", "stateFilter"];
+FILTER_IDS.forEach(id => $("#" + id).oninput = render);
+$("#clearFilters").onclick = () => {
+  $("#search").value = ""; $("#searchScope").value = "all"; $("#searchRegex").checked = false;
+  $("#prefixFilter").value = ""; $("#stratFilter").value = ""; $("#posFilter").value = "";
+  $("#stateFilter").value = ""; render();
+};
+document.querySelectorAll("th[data-sort]").forEach(th => th.onclick = () => {
+  const col = th.dataset.sort;
+  SORT = {col, dir: SORT.col === col ? -SORT.dir : 1}; render();
+});
+
+// ---- Selection ----
+function updateSelCount() {
+  $("#selCount").textContent = SELECTED.size + " selected";
+  $("#selAll").checked = SELECTED.size && filtered().every(e => SELECTED.has(e.uid));
+}
+$("#selAll").onchange = e => {
+  const rows = filtered();
+  if (e.target.checked) rows.forEach(r => SELECTED.add(r.uid));
+  else rows.forEach(r => SELECTED.delete(r.uid));
+  render();
+};
+$("#selInvert").onclick = () => {
+  filtered().forEach(r => SELECTED.has(r.uid) ? SELECTED.delete(r.uid) : SELECTED.add(r.uid));
+  render();
+};
+function selectedUids() { return [...SELECTED]; }
+function needSel() { if (!SELECTED.size) { toast("Select some entries first"); return false; } return true; }
+
+async function bulk(payload, msg) {
+  const r = await api("/api/editor/bulk", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload)});
+  if (r.error) return toast(r.error);
+  toast(msg.replace("{n}", r.changed)); setDirty(true); refresh();
+}
+document.querySelectorAll(".bulkbar [data-strat]").forEach(b => b.onclick = () => {
+  if (!needSel()) return;
+  bulk({op: "set_strategy", strategy: b.dataset.strat, uids: selectedUids()}, "Set strategy on {n} entries");
+});
+$("#bulkEnable").onclick = () => needSel() && bulk({op: "enable", uids: selectedUids()}, "Enabled {n}");
+$("#bulkDisable").onclick = () => needSel() && bulk({op: "disable", uids: selectedUids()}, "Disabled {n}");
+$("#bulkDelete").onclick = () => { if (!needSel()) return;
+  if (confirm(`Delete ${SELECTED.size} entries? (Undo is available afterwards.)`))
+    bulk({op: "delete", uids: selectedUids()}, "Deleted {n}").then(() => SELECTED.clear()); };
+$("#bulkField").onclick = () => { if (!needSel()) return;
+  const field = prompt("Field to set (order, depth, position, probability, group…):"); if (!field) return;
+  let value = prompt(`Set ${field} = ?`); if (value === null) return;
+  if (!isNaN(value) && value.trim() !== "") value = Number(value);
+  bulk({op: "set_field", field, value, uids: selectedUids()}, "Updated {n} entries"); };
+$("#bulkReplace").onclick = () => { if (!needSel()) return;
+  const find = prompt("Find text:"); if (!find) return;
+  const replace = prompt("Replace with:") ?? "";
+  const where = prompt("In which fields? content, comment, key (comma-separated):", "content");
+  if (!where) return;
+  const regex = confirm("Treat the search text as a regular expression?\nOK = regex · Cancel = plain text");
+  bulk({op: "find_replace", find, replace, regex, fields: where.split(",").map(s => s.trim()),
+    uids: selectedUids()}, "Replaced in {n} entries"); };
+
+// ---- Undo ----
+$("#undoBtn").onclick = async () => {
+  const r = await api("/api/editor/undo", {method: "POST"});
+  if (r.error) return toast(r.error);
+  toast("Undone"); refresh();
+};
+
+// ---- Duplicates ----
+$("#dupBtn").onclick = async () => {
+  const d = await api("/api/editor/duplicates");
+  const keys = Object.keys(d.duplicates);
+  if (!keys.length) return toast("No duplicate keys 🎉");
+  let msg = "Duplicate primary keys:\n\n";
+  keys.slice(0, 30).forEach(k => { msg += `"${k}" → ` +
+    d.duplicates[k].map(x => x.comment || "uid " + x.uid).join(", ") + "\n"; });
+  if (keys.length > 30) msg += `\n…and ${keys.length - 30} more`;
+  alert(msg);
+};
+
+// ---- Add ----
+$("#addBtn").onclick = async () => {
+  const r = await api("/api/editor/add", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({})});
+  if (r.error) return toast(r.error);
+  setDirty(true); await refresh(); openDrawer(r.entry.uid);
+};
+
+// ---- Drawer ----
+const drawer = $("#drawer"), backdrop = $("#backdrop");
+function closeDrawer() { drawer.classList.remove("open"); backdrop.classList.remove("open"); CUR_UID = null; }
+$("#drawerClose").onclick = closeDrawer; backdrop.onclick = closeDrawer;
+async function openDrawer(uid) {
+  const e = await api(`/api/editor/entry/${uid}`); CUR_UID = uid;
+  $("#d_comment").value = e.comment || "";
+  $("#d_key").value = (e.key || []).join(", ");
+  $("#d_keysecondary").value = (e.keysecondary || []).join(", ");
+  $("#d_strategy").value = e.constant ? "constant" : e.vectorized ? "vectorized" : e.selective ? "selective" : "normal";
+  $("#d_selectiveLogic").value = e.selectiveLogic ?? 0;
+  $("#d_order").value = e.order ?? 100; $("#d_depth").value = e.depth ?? 4;
+  $("#d_position").value = e.position ?? 0; $("#d_probability").value = e.probability ?? 100;
+  $("#d_group").value = e.group ?? "";
+  $("#d_content").value = e.content || "";
+  $("#drawerTitle").textContent = e.comment || "Edit entry";
+  drawer.classList.add("open"); backdrop.classList.add("open");
+}
+$("#d_save").onclick = async () => {
+  const list = s => s.split(",").map(x => x.trim()).filter(Boolean);
+  const patch = {
+    comment: $("#d_comment").value, key: list($("#d_key").value),
+    keysecondary: list($("#d_keysecondary").value), strategy: $("#d_strategy").value,
+    selectiveLogic: +$("#d_selectiveLogic").value, order: +$("#d_order").value,
+    depth: +$("#d_depth").value, position: +$("#d_position").value,
+    probability: +$("#d_probability").value, group: $("#d_group").value,
+    content: $("#d_content").value,
+  };
+  await api(`/api/editor/entry/${CUR_UID}`, {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(patch)});
+  toast("Entry saved"); setDirty(true); closeDrawer(); refresh();
+};
+$("#d_delete").onclick = () => { if (confirm("Delete this entry?"))
+  bulk({op: "delete", uids: [+CUR_UID]}, "Deleted entry").then(closeDrawer); };
+
+// ---- Save ----
+/* Hands this book to the Maker so more entries can be scraped onto it. The
+   Maker keeps every entry exactly as it is and adds alongside, so unsaved
+   edits here are carried over rather than lost. */
+$("#addInMaker").onclick = async () => {
+  const res = await fetch("/api/maker/adopt-editor", { method: "POST" });
+  const data = await res.json();
+  if (data.error) { toast(data.error); return; }
+  location.href = data.redirect || "/maker";
+};
+
+$("#saveDownload").onclick = async () => {
+  const r = await fetch("/api/editor/save", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({mode: "download"})});
+  const blob = await r.blob(); const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = $("#fileName").textContent.split("  ·")[0];
+  a.click(); setDirty(false); toast("Downloaded");
+};
+$("#saveInplace").onclick = async () => {
+  if (!confirm("Overwrite the original file? A timestamped .bak is created first.")) return;
+  const r = await api("/api/editor/save", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({mode: "inplace"})});
+  r.error ? toast(r.error) : (setDirty(false), toast("Saved · backup: " + r.backup));
+};
+window.onbeforeunload = e => { if (!$("#dirtyFlag").classList.contains("hidden")) return e.returnValue = "Unsaved changes"; };
+</script>
