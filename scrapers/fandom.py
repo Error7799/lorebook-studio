@@ -29,8 +29,12 @@ HEADERS = {"User-Agent": "LorebookStudio/1.0 (educational/personal use)"}
 
 SESSION = requests.Session()
 SESSION.headers.update(HEADERS)
-_retry = Retry(total=3, backoff_factor=0.5,
+# Fandom rate-limits a busy client with 429s. Backing off further and obeying
+# the Retry-After header it sends is the difference between a slow import and a
+# failed one.
+_retry = Retry(total=5, backoff_factor=1.2,
                status_forcelist=(429, 500, 502, 503, 504),
+               respect_retry_after_header=True,
                allowed_methods=("GET",))
 SESSION.mount("https://", HTTPAdapter(max_retries=_retry, pool_maxsize=8))
 
@@ -146,6 +150,12 @@ _NOISE_CATEGORY = re.compile(
     # its Blu-ray release — the My Hero Academia wiki offered "Authors" as a
     # five-page category of real people beside its cast.
     r"|authors?|mangaka|illustrators?|writers?|editors?|animators?|studios?"
+    # Shelves of merchandise and side publications. They are works in their own
+    # right — the step-1 chooser lists them — but they are not lore, and the
+    # Demon Slayer wiki offered eight paint books beside its cast.
+    r"|art ?books?|paint books?|setting books?|character books?|fan ?books?"
+    r"|colou?ring books?|novelizations?|novelisations?|calendars?"
+    r"|spin[- ]?offs?|chronicles series|guide ?books?|data ?books?"
     # Format names have to match the whole category, not a word inside it:
     # "Anime Original Quirks" are in-universe powers and belong in a lorebook,
     # while a category called simply "Anime" is a list of episodes.
@@ -558,6 +568,32 @@ def _claim_rank(name):
     return best
 
 
+# Titles that are never a lorebook entry, whichever category surfaced them.
+# Browsing a whole wiki took category members verbatim, so the Demon Slayer
+# wiki offered "Chapter 67", "Blu-ray & DVD: Entertainment District Arc -
+# Volume 3", "Calendar/2016" and eight paint books as things to import.
+_NOT_AN_ENTRY = re.compile(
+    r"^(chapters?|episodes?|volumes?|issues?|parts?|acts?|seasons?|books?)\s*[#.]?\s*\d"
+    r"|^(blu[- ]?ray|dvd|cd|ost|soundtrack|single|album|omnibus)\b"
+    r"|\b(paint book|art ?book|setting book|fan ?book|character book"
+    r"|colou?ring book|novelization|novelisation|guide ?book|data ?book"
+    r"|sticker book|activity book|picture book|calendar|soundtrack)\b"
+    r"|^(calendar|timeline|gallery|galleries)\b", re.I)
+
+
+def is_lorebook_page(title):
+    """
+    True when a page could be a lorebook entry at all.
+
+    Subpages are parts of another page ("Calendar/2016"); the rest are
+    instalments and merchandise, which are about the story rather than in it.
+    """
+    title = (title or "").strip()
+    if not title or "/" in title or _RESERVED_PREFIX.match(title):
+        return False
+    return not _NOT_AN_ENTRY.search(title)
+
+
 def dedupe_groups(groups):
     """
     Give every page one home, and turn the leftovers into filters.
@@ -810,12 +846,52 @@ _NOT_AN_INFOBOX = re.compile(
     r"|nav|navbox|footer|stub|about|main|see also|for)\b", re.I)
 
 
+# Navigation furniture named after the medium it navigates. {{Anime
+# Navigation}} sits at the foot of every anime-related page, so it made
+# "Mitsuri's Uniform" and an episode index look like published works.
+_NAV_TEMPLATE = re.compile(
+    r"\b(nav|navi|navigation|navbox|navbar|footer|sidebar|banner|header"
+    r"|template|box|bar|list|index)$", re.I)
+
+
 def is_work_template(name):
     """True when a template name marks its page as a film, series or book."""
     name = (name or "").strip()
-    if not name or _NOT_AN_INFOBOX.match(name):
+    if not name or _NOT_AN_INFOBOX.match(name) or _NAV_TEMPLATE.search(name):
         return False
     return bool(_WORK_INFOBOX.search(name))
+
+
+# What a confirming template says the thing actually is, where that is clearer
+# than the shelf it was found on: Demon Slayer files its Hinokami Chronicles
+# games under "TV Series", and their {{Game}} infobox knows better.
+_TEMPLATE_KIND = [
+    ("short film", "Short Films"), ("documentary", "Documentaries"),
+    ("movie", "Movies"), ("film", "Movies"),
+    ("video game", "Video Games"), ("game", "Video Games"),
+    ("light novel", "Novels"), ("novel", "Novels"),
+    ("artbook", "Artbooks"), ("book", "Books"),
+    ("manga", "Manga"), ("anime", "Anime"), ("comic", "Comics"),
+    ("season", "Seasons"), ("special", "Specials"),
+    ("tv", "TV Series"), ("television", "TV Series"),
+]
+
+
+# Kinds where a page's own infobox is a better guide than the shelf: a wiki
+# with no separate games shelf files them wherever, and {{Game}} is decisive.
+_TRUST_TEMPLATE_KIND = {"Video Games", "Novels", "Books", "Artbooks", "Comics"}
+
+
+def template_kind(names):
+    """The kind a page's own templates claim, or "" when they do not say."""
+    for name in names or ():
+        if not is_work_template(name):
+            continue
+        plain = re.sub(r"[\s_\-]+", " ", name).strip().lower()
+        for word, kind in _TEMPLATE_KIND:
+            if re.search(r"\b" + re.escape(word) + r"\b", plain):
+                return kind
+    return ""
 
 
 def fetch_templates(api, titles):
@@ -934,8 +1010,13 @@ def discover_works(api, info=None):
     by_kind = [(kind, picked[kind][:MAX_WORKS_PER_KIND])
                for kind in order if picked.get(kind)]
     # The biggest shelf is a fair estimate of how many a kind really holds, so
-    # the step can admit it is showing forty of two and a half thousand.
-    held = {kind: max(size for size, _ in shelves[kind]) for kind in shelves}
+    # the step can admit it is showing forty of two and a half thousand — but
+    # only where the shelf is mostly works. Solo Leveling's "Anime" category is
+    # forty-six pages of which one is the anime and forty-five are episodes and
+    # songs; "showing 1 of 46" would be a promise of forty-five more that do
+    # not exist. `held` is settled once the verification below says which.
+    shelf_size = {kind: max(size for size, _ in shelves[kind]) for kind in shelves}
+    candidates = {kind: len(picked.get(kind, ())) for kind in shelves}
 
     everything = [i["title"] for _, items in by_kind for i in items]
     if not everything:
@@ -971,12 +1052,15 @@ def discover_works(api, info=None):
     survivors = [i["title"] for _, items in kept for i in items][:MAX_WORK_CHECKS]
     templates = fetch_templates(api, survivors)
     if templates:
-        confirmed = set()
+        confirmed, says = set(), {}
         for title in survivors:
             for name in templates.get(title, ()):
                 if is_work_template(name):
                     confirmed.add(title)
                     break
+            claimed = template_kind(templates.get(title, ()))
+            if claimed:
+                says[title] = claimed
         # A wiki whose work pages carry no infobox we recognise would lose
         # every one of them, so this only narrows a list that still has
         # something left in it.
@@ -985,9 +1069,36 @@ def discover_works(api, info=None):
         if any(items for _, items in checked):
             kept = [(kind, items) for kind, items in checked if items]
 
+        # A page's own infobox can correct the shelf it was found on — Demon
+        # Slayer files its Hinokami Chronicles games under "TV Series" and they
+        # say {{Game}} — but only for media a wiki has no narrative word for.
+        # Between Movies, Seasons and Anime the shelf is the better judge:
+        # these wikis stamp {{Anime}} on films and seasons alike, and trusting
+        # it folded every one of them into a single Anime tab.
+        moved, order = {}, [k for k, _ in kept]
+        for kind, items in kept:
+            for item in items:
+                claimed = says.get(item["title"], "")
+                target = claimed if claimed in _TRUST_TEMPLATE_KIND else kind
+                moved.setdefault(target, []).append(item)
+        order += [k for k in moved if k not in order]
+        order.sort(key=lambda k: KIND_ORDER.index(k) if k in KIND_ORDER
+                   else len(KIND_ORDER))
+        kept = [(kind, moved[kind]) for kind in order if moved.get(kind)]
+
     posters = fetch_images(api, [i["title"] for _, items in kept for i in items])
+    def held_for(kind, shown):
+        # Only the ones that were actually checked can say what proportion of
+        # the shelf is works. Comparing against every candidate instead counts
+        # truncation as failure, and Disney's Movies shelf — forty verified out
+        # of forty checked — stopped admitting it had 2,607 in it.
+        checked = min(candidates.get(kind) or shown, MAX_WORKS_PER_KIND)
+        if checked and shown < checked * 0.5:
+            return shown
+        return max(shelf_size.get(kind, shown), shown)
+
     answer = [{"kind": kind,
-               "held": held.get(kind, len(items)),
+               "held": held_for(kind, len(items)),
                "works": [{"title": i["title"], "group": i["group"],
                           "image": posters.get(i["title"], "")} for i in items]}
               for kind, items in kept]
@@ -1090,6 +1201,10 @@ def browse_wiki(url, per_category=250, ref=None, info=None, works=True):
             continue
 
         pages, subgroups = expand_category(api, name, budget)
+        pages = [p for p in pages if is_lorebook_page(p)]
+        subgroups = [dict(g, pages=[p for p in g["pages"] if is_lorebook_page(p)])
+                     for g in subgroups]
+        subgroups = [g for g in subgroups if g["pages"]]
         if not pages:
             continue
         seen_subgroups.update(g["category"] for g in subgroups)
@@ -1499,6 +1614,78 @@ def subpage_titles(titles, suffixes=SUBPAGE_SUFFIXES):
     return out
 
 
+# A template invocation whose name is itself a subpage: {{Izuku Synopsis/Final
+# Act}}. Wikis use these to keep one enormous article in readable pieces, and
+# the pieces are the article. Anything with parameters is a formatting helper
+# rather than a slab of prose, so a "|" rules a match out.
+_CONTENT_TRANSCLUSION = re.compile(
+    r"\{\{\s*(?:Template:)?\s*([^|{}\n]+?/[^|{}\n]+?)\s*\}\}")
+
+MAX_TRANSCLUDED = 6           # pieces followed per page
+MAX_TRANSCLUDED_CHARS = 500000
+
+
+def expand_transclusions(api, records):
+    """
+    Splice transcluded content pages into the pages that include them.
+
+    The My Hero Academia wiki keeps each character's synopsis in template
+    subpages — Izuku Midoriya's is three of them holding 330 KB between them —
+    so his Synopsis tab is four headings and no story. Templates are stripped
+    when wikitext is cleaned, which is right for formatting helpers and wrong
+    for these, so they are pulled in first and read as part of the page.
+
+    Mutates `records` and returns how many pieces were inlined.
+    """
+    wanted, where = [], {}
+    for key, record in list(records.items()):
+        if not record or record.get("missing") or "/" not in key:
+            continue
+        suffix = key.split("/", 1)[1]
+        if not _STORY_TAB.search(suffix):
+            continue
+        raw = record.get("wikitext") or ""
+        names = []
+        for match in _CONTENT_TRANSCLUSION.finditer(raw):
+            name = match.group(1).strip()
+            if not name or name.lower().startswith(("file:", "category:")):
+                continue
+            # {{Tabs/Active}} is a slash away from looking like content. What
+            # tells them apart is the family the template belongs to.
+            family = re.sub(r"[\s_]+", " ", name.split("/", 1)[0]).strip().lower()
+            if family in W.TEMPLATE_DROP or _NOT_AN_INFOBOX.match(family):
+                continue
+            if any(word in family for word in W.TEMPLATE_DROP_SUBSTR):
+                continue
+            names.append(name)
+        for name in list(dict.fromkeys(names))[:MAX_TRANSCLUDED]:
+            title = name if name.lower().startswith("template:") else f"Template:{name}"
+            wanted.append(title)
+            where.setdefault(key, []).append((name, title))
+
+    if not wanted:
+        return 0
+    pieces = fetch_pages(api, list(dict.fromkeys(wanted)))
+
+    filled = 0
+    for key, refs in where.items():
+        raw = records[key].get("wikitext") or ""
+        budget = MAX_TRANSCLUDED_CHARS
+        for name, title in refs:
+            piece = pieces.get(title) or {}
+            body = "" if piece.get("missing") else (piece.get("wikitext") or "")
+            if not body or len(body) > budget:
+                continue
+            budget -= len(body)
+            pattern = re.compile(
+                r"\{\{\s*(?:Template:)?\s*"
+                + re.escape(name) + r"\s*\}\}")
+            raw, count = pattern.subn(lambda _m: body, raw, count=1)
+            filled += count
+        records[key] = dict(records[key], wikitext=raw)
+    return filled
+
+
 def fetch_with_subpages(api, titles, guess=True):
     """
     Fetch pages together with their tabbed subpages.
@@ -1548,7 +1735,14 @@ def fetch_with_subpages(api, titles, guess=True):
 
     wanted = [t for t in dict.fromkeys(wanted) if t not in records]
     if wanted:
-        records.update(fetch_pages(api, wanted))
+        # A subpage that will not load is a thinner entry, not a failed import:
+        # one rate-limited request should never lose the page it belongs to.
+        try:
+            records.update(fetch_pages(api, wanted))
+        except FandomError:
+            pass
+    # Some wikis keep the story in template subpages the tab merely includes.
+    expand_transclusions(api, records)
     return records
 
 
@@ -1685,10 +1879,13 @@ def story_sections(raw):
     _, raw_sections = W.split_sections(raw or "")
     sections = []
     for section in raw_sections:
+        text = W.clean(section["body"]).strip()
         sections.append({"title": (section["title"] or "").strip(),
                          "level": section["level"],
                          "priority": section["priority"],
-                         "text": W.clean(section["body"]).strip()})
+                         # "Coming soon!" is not an arc; treating it as empty
+                         # lets the heading be dropped like any other blank.
+                         "text": "" if W.is_placeholder(text) else text})
     if not sections:
         return []
 
@@ -1802,6 +1999,7 @@ def page_arcs(records, title):
                 continue
             name = (section["title"] or suffix).strip()
             found.append({"name": name, "key": section["key"] or arc_key(name),
+                          "named": bool(_ARC_TITLE.search(name)),
                           "depth": section["depth"], "is_arc": section["is_arc"],
                           "parent": section["path"][-2] if len(section["path"]) > 1 else "",
                           "chars": len(section["text"])})
@@ -1824,7 +2022,8 @@ def collect_arcs(records, titles):
             row = seen.setdefault(arc["key"], {
                 "key": arc["key"], "name": arc["name"], "names": set(),
                 "pages": 0, "chars": 0, "depth": arc["depth"],
-                "parent": arc["parent"], "is_arc": arc["is_arc"]})
+                "parent": arc["parent"], "is_arc": arc["is_arc"],
+                "named": arc["named"]})
             row["pages"] += 1
             row["chars"] += arc["chars"]
             row["names"].add(arc["name"])
@@ -1834,6 +2033,7 @@ def collect_arcs(records, titles):
                 row["depth"] = arc["depth"]
                 row["parent"] = arc["parent"]
             row["is_arc"] = row["is_arc"] or arc["is_arc"]
+            row["named"] = row["named"] or arc["named"]
             if len(arc["name"]) > len(row["name"]):
                 row["name"] = arc["name"]
 
@@ -1851,16 +2051,25 @@ def collect_arcs(records, titles):
         row["name"] = min(row["names"], key=len) if row["names"] else row["name"]
         row.pop("names", None)
         # A heading on one page holding a couple of lines is that page's own
-        # layout ("Members", "Base of Operations"), not part of the story.
-        if row["pages"] < 2 and row["chars"] < MIN_ARC_CHARS:
+        # layout ("Members", "Base of Operations"), not part of the story —
+        # unless the wiki called it an arc, in which case it is one however
+        # briefly it is written. Solo Leveling gives each of its twenty arcs
+        # about four hundred characters, and the size test threw away fourteen.
+        if not row["chars"]:
+            continue        # an arc the wiki has not written yet
+        if not row["named"] and row["pages"] < 2 and row["chars"] < MIN_ARC_CHARS:
             continue
         out.append(row)
 
     # A child whose parent did not survive would be orphaned in the chooser,
-    # so it is promoted rather than hidden.
-    kept = {row["key"] for row in out}
+    # so it is promoted rather than hidden. So is one whose parent is not an
+    # arc at all: Solo Leveling files twenty arcs under a "History" heading
+    # that has prose of its own, and burying the whole story one click down
+    # from a chip called "History" is not what anybody is looking for.
+    by_key = {row["key"]: row for row in out}
     for row in out:
-        if row["parent"] and row["parent"] not in kept:
+        parent = by_key.get(row["parent"]) if row["parent"] else None
+        if row["parent"] and (parent is None or not parent["is_arc"]):
             row["parent"] = ""
             row["depth"] = 0
 
@@ -2568,37 +2777,27 @@ def scrape_article(url, notes="", budget=DEFAULT_BUDGET, ref=None, info=None,
     browse = None
     if is_work_page(profile.get("infobox_type"), manifest):
         browse = manifest_browse(ref, info, record["title"], manifest)
-        # A cast list is all most season pages carry, and a lorebook made of
-        # nothing but people is missing the world they move through. The
-        # episodes name the rest, and the page has already linked them.
-        try:
-            wider = build_work_scope(ref, info, record["title"], raw, log)
-        except FandomError:
-            wider = None
-        if wider:
-            browse = merge_browse(browse, wider)
 
-    # A sequel or spin-off names its cast nowhere on its own page — the wiki
-    # keeps that in the chapters. Deriving it is several requests, so it is
-    # only attempted when the page listed nothing useful itself.
-    if (not browse or not browse["groups"]) and is_series_page(
-            profile.get("infobox_type"), raw, record["title"], info["name"]):
+    # Three ways of working out what is in a story, and no wiki supports all
+    # three. The page's own cast list is the most exact where it exists; a
+    # sub-series is measured against its own chapters; and some wikis say
+    # nothing on the page and file everything in categories named after it.
+    # They are gathered rather than raced, because a wiki that supports two
+    # will have put different things in each — narrowing Vigilantes to the
+    # pages filed under its name alone lost two hundred of them.
+    def widen(build, *args):
+        nonlocal browse
         try:
-            browse = build_scope(ref, info, record["title"], raw, log) or browse
+            extra = build(*args)
         except FandomError:
-            pass
+            return
+        if extra and extra.get("groups"):
+            browse = merge_browse(browse, extra) if browse else extra
 
-    # Last resort, and the only thing that works on a wiki like Disney's: if
-    # the wiki keeps categories named after this page holding characters and
-    # places, then this page is a story whatever its infobox says. "Moana" is
-    # a 585-byte disambiguation page with no infobox at all, and the wiki
-    # still files thirty-nine characters and locations under its name.
-    if not browse or not browse["groups"]:
-        try:
-            browse = build_work_scope(
-                ref, info, record["title"], raw, log) or browse
-        except FandomError:
-            pass
+    if is_series_page(profile.get("infobox_type"), raw,
+                      record["title"], info["name"]):
+        widen(build_scope, ref, info, record["title"], raw, log)
+    widen(build_work_scope, ref, info, record["title"], raw, log)
 
     # The wiki's own subject, in one of its formats. There is nothing to narrow
     # to — everything on the wiki is in this story — so the answer is the whole
@@ -2816,6 +3015,12 @@ _WORK_CONTENT_SUFFIX = re.compile(
 
 # …and the ones named after a work that hold something else: its songs, its
 # artwork, the real people who made it.
+# Categories named after a work that hold the instalments it is told in. Those
+# are evidence rather than entries: reading them is how a season with no cast
+# list on its page still yields its cast.
+_WORK_INSTALMENT_SUFFIX = re.compile(
+    r"\b(episodes?|chapters?|volumes?|issues?|parts?)$", re.I)
+
 _WORK_CONTENT_SKIP = re.compile(
     r"\b(people|cast|crew|actors?|actresses|voices?|songs?|music|albums?"
     r"|galler(y|ies)|images?|videos?|screenshots?|artwork|books?|comics?"
@@ -2823,38 +3028,83 @@ _WORK_CONTENT_SKIP = re.compile(
     r"|episodes?|shorts?|attractions?)$", re.I)
 
 
-def work_content_categories(api, title):
+def _work_names(title, wiki_name=""):
     """
-    Pages the wiki files under this work by name, grouped nowhere in
-    particular — just everything that belongs to it.
+    The names a wiki might file this work's categories under.
 
-    Returns [] when the wiki does not organise itself that way.
+    A season is titled in full on its own page and abbreviated everywhere
+    else: "My Hero Academia Season 1" keeps its episodes in
+    `Category:Season 1 Episodes`, so looking only for the full name finds
+    nothing at all.
     """
-    try:
-        data = _call(api, {"action": "query", "list": "allcategories",
-                           "acprefix": title, "aclimit": 100,
-                           "acprop": "size"})
-    except FandomError:
-        return []
+    title = (title or "").strip()
+    names = [title]
+    parent = scope.parent_name(wiki_name or "")
+    if parent:
+        match = re.match(rf"^{re.escape(parent)}[\s:–—-]+(.+)$", title, re.I)
+        if match and len(match.group(1).strip()) >= 3:
+            names.append(match.group(1).strip())
+    return list(dict.fromkeys(n for n in names if n))
 
-    wanted = []
-    for row in data.get("query", {}).get("allcategories", []):
-        name = row.get("category") or ""
-        rest = name[len(title):].strip()
-        if not row.get("pages") or not rest:
-            continue        # the bare "Frozen" category is a mixed bag
-        if _WORK_CONTENT_SKIP.search(rest):
-            continue
-        if _WORK_CONTENT_SUFFIX.search(rest):
-            wanted.append(name)
 
-    pages = []
-    for name in wanted[:MAX_WORK_CONTENT_LISTS]:
+def work_content_categories(api, title, wiki_name=""):
+    """
+    Pages the wiki files under this work by name.
+
+    Returns (lore, instalments): things that belong in the story, and the
+    episodes or chapters it is told in. The Disney wiki keeps no cast list on
+    a film page at all — "Frozen" is 35 KB of plot — but files Elsa under
+    "Frozen characters" and Arendelle under "Frozen locations".
+    """
+    lore_lists, seed_lists, bare_lists = [], [], []
+    for name in _work_names(title, wiki_name):
         try:
-            pages += category_members(api, name, limit=200)
+            data = _call(api, {"action": "query", "list": "allcategories",
+                               "acprefix": name, "aclimit": 100,
+                               "acprop": "size"})
         except FandomError:
             continue
-    return list(dict.fromkeys(pages))
+        for row in data.get("query", {}).get("allcategories", []):
+            found = row.get("category") or ""
+            rest = found[len(name):].strip()
+            if not row.get("pages"):
+                continue
+            if not rest:
+                # A category named exactly after the work. On some wikis that
+                # is a mixed bag; on others it is the only thing there is —
+                # Demon Slayer keeps a season's twenty-six episodes in it — so
+                # it is read and sorted out by what the titles look like.
+                bare_lists.append(found)
+                continue
+            # What is left has to be the whole of the suffix. "Season 1
+            # (Vigilantes) Episodes" ends in "Episodes" too, and it belongs to
+            # a different story entirely.
+            if _WORK_INSTALMENT_SUFFIX.fullmatch(rest):
+                seed_lists.append(found)
+                continue
+            if _WORK_CONTENT_SKIP.search(rest):
+                continue
+            if _WORK_CONTENT_SUFFIX.fullmatch(rest):
+                lore_lists.append(found)
+
+    def members(names, limit):
+        pages = []
+        for found in list(dict.fromkeys(names))[:limit]:
+            try:
+                pages += category_members(api, found, limit=200)
+            except FandomError:
+                continue
+        return list(dict.fromkeys(pages))
+
+    lore = members(lore_lists, MAX_WORK_CONTENT_LISTS)
+    seeds = members(seed_lists, 2)
+    if not lore and not seeds:
+        for page in members(bare_lists, 2):
+            if scope._INSTALMENT_RE.search(page):
+                seeds.append(page)
+            elif is_lorebook_page(page):
+                lore.append(page)
+    return lore, seeds
 
 
 def build_work_scope(ref, info, title, raw, log=None):
@@ -2876,7 +3126,11 @@ def build_work_scope(ref, info, title, raw, log=None):
     # named after it. The Disney wiki is the extreme: "Frozen" is 35 KB of plot
     # with no cast list anywhere on it, while "Frozen characters" holds all
     # thirty-eight of them and "Frozen locations" holds Arendelle.
-    direct = work_content_categories(api, title)
+    direct, filed_seeds = work_content_categories(api, title, info.get("name"))
+    if not seeds and filed_seeds:
+        # A season page that lists neither cast nor episodes still has its
+        # episodes filed under its name, and those name everybody in it.
+        seeds, unit = filed_seeds[:MAX_WORK_SEEDS], "episodes"
     if len(seeds) < 2 and not direct:
         return None
 
@@ -2988,7 +3242,14 @@ def is_series_page(infobox_type, raw, title, wiki_name):
     """
     if not (infobox_type and _WORK_INFOBOX.search(infobox_type)):
         return False
-    return bool(scope.short_name(title, scope.parent_name(wiki_name)))
+    # A spin-off is named after the thing it spun off from — "My Hero Academia:
+    # Vigilantes", "Jujutsu Kaisen Modulo". A film that merely has a colon in
+    # its title is not one, and "Avengers: Endgame" was being taken for a
+    # sub-series called "Endgame" and searched for across the whole wiki.
+    parent = scope.parent_name(wiki_name)
+    if not parent or not re.match(rf"^{re.escape(parent)}\b", title, re.I):
+        return False
+    return bool(scope.short_name(title, parent))
 
 
 def build_scope(ref, info, title, raw, log=None):

@@ -423,6 +423,35 @@ A wiki documenting a single story has no question to ask, and opens straight
 at its categories.
 
 
+#### Stories kept in template subpages
+
+The My Hero Academia wiki keeps each character's synopsis in template
+subpages the tab merely includes:
+
+```
+==Synopsis==
+{{Template:Izuku Synopsis/UA Beginnings}}    ← 118 KB
+{{Template:Izuku Synopsis/Rise of Villains}} ← 213 KB
+```
+
+Templates are stripped when wikitext is cleaned, which is right for
+formatting helpers and wrong for these, so Izuku Midoriya's synopsis came out
+as **four headings and no story**. Content transclusions are now pulled in
+first and read as part of the page — **1 arc became 27**, and 336 KB of
+synopsis appeared where there had been none. A template with parameters is a
+formatting helper and left alone; `{{Tabs/Active}}` and its kind are matched
+by family and skipped.
+
+#### Sections nobody has written yet
+
+Solo Leveling heads twenty arcs on each character page and puts "Coming soon!"
+under fourteen of them. Offering an arc that holds twelve characters of that
+is worse than not offering it, so placeholder text (`TBA`, `To be added`,
+`N/A`, `WIP`) counts as empty and those arcs do not appear. Its six written
+arcs do — and a *named* arc is never dropped for being short, which is what
+used to lose fourteen more.
+
+
 #### When the cast is not on the page
 
 Some wikis put nothing useful on a work's own page. The Disney wiki is the
@@ -784,6 +813,11 @@ And in `scrapers/fandom.py`:
 | `work_content_categories` | `Frozen characters`, `Frozen locations` — what a wiki files under a work |
 | `_WORK_CONTENT_SKIP` | …and the ones holding its crew, songs or artwork instead |
 | `search_works` | Finding one story by name on a wiki too big to list |
+| `expand_transclusions` | Pulls in a story kept in template subpages |
+| `is_lorebook_page` | Rejects chapters, Blu-rays and merchandise as entries |
+| `W.is_placeholder` | "Coming soon!" is an empty section, not a short one |
+| `_NAV_TEMPLATE` | Navigation furniture named after a medium is not an infobox |
+| `_TRUST_TEMPLATE_KIND` | Where a page's infobox outranks the shelf it sat on |
 | `is_work_template` | Whether a template marks a work — `{{Cite book}} does not` |
 | `build_work_scope` | What turns up across those instalments, ranked |
 | `MIN_MEANINGFUL_CHARS` | Below this a heading is a label, not a section |

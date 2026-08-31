@@ -693,6 +693,69 @@ check("…carrying the matches inside them",
                 if t["title"] == "First Selection Arc"][0]["text"]
           for w in ("Team X vs Team Z:", "Team Y vs Team Z:")), True)
 
+# ── No stray control characters in the source ─────────────────
+# A backslash-b written into a pattern as a literal backspace is invisible in
+# every editor and turns a word boundary into a character nothing matches. It
+# has silently disabled four regexes so far, so it is now checked for.
+import glob as _glob
+import io as _io
+_stray = []
+for _path in (_glob.glob("scrapers/*.py") + _glob.glob("core/*.py")
+              + _glob.glob("templates/*.html") + ["app.py"]):
+    if chr(8) in _io.open(_path, encoding="utf-8").read():
+        _stray.append(_path)
+check("no source file contains a literal backspace", _stray, [])
+
+
+# ── A spin-off is named after what it span off from ───────────────
+# A film with a colon in its title is not one: "Avengers: Endgame" was taken
+# for a sub-series called "Endgame" and searched for across the whole wiki.
+check("a spin-off carries its parent's name",
+      [F.is_series_page(box, "", title, wiki) for title, wiki, box in (
+          ("My Hero Academia: Vigilantes", "My Hero Academia Wiki",
+           "Series Infobox"),
+          ("Jujutsu Kaisen Modulo", "Jujutsu Kaisen Wiki", "Series Infobox"))],
+      [True, True])
+check("a film with a colon in its title does not",
+      F.is_series_page("Movie", "", "Avengers: Endgame",
+                       "Marvel Cinematic Universe Wiki"), False)
+check("and the wiki's own subject is the whole wiki",
+      [F.is_wiki_subject(t, "Blue Lock Wiki") for t in
+       ("Blue Lock (Manga)", "Blue Lock", "Blue Lock - Episode Nagi")],
+      [True, True, False])
+
+
+# ── Pages that are never entries ──────────────────────────
+# Browsing a whole wiki took category members verbatim, so Demon Slayer
+# offered "Chapter 67" and eight paint books as things to import.
+check("instalments and merchandise are not entries",
+      [F.is_lorebook_page(t) for t in
+       ("Chapter 67", "Blu-ray & DVD: Mugen Train - Volume 1",
+        "Calendar/2016", "Kimetsu no Yaiba Paint Book: Blue")],
+      [False, False, False, False])
+check("…but a character with a number in its name is",
+      [F.is_lorebook_page(t) for t in
+       ("Tanjiro Kamado", "Number 6", "Chapter Master", "Mugen Train")],
+      [True, True, True, True])
+
+# A wiki writes "Coming soon!" where the writing has not happened yet, and
+# Solo Leveling does it for fourteen of its twenty arcs.
+check("an unwritten section counts as empty",
+      [W.is_placeholder(t) for t in
+       ("Coming soon!", "TBA", "To be added.", "N/A")],
+      [True, True, True, True])
+check("…and real prose does not",
+      W.is_placeholder("Jinwoo was born on March 8th."), False)
+
+# Navigation furniture named after a medium is not an infobox for one.
+check("a navigation template does not make a page a work",
+      [F.is_work_template(t) for t in
+       ("Anime Navigation", "Game Navigation", "Episode List", "Anime")],
+      [False, False, False, True])
+check("a page's own infobox can correct the shelf it was found on",
+      [F.template_kind([t]) for t in ("Game", "Movie", "TV")],
+      ["Video Games", "Movies", "TV Series"])
+
 # ── Reporting ─────────────────────────────────────────────────────────────
 if FAILED:
     print(f"\n{len(FAILED)} check(s) failed:\n")

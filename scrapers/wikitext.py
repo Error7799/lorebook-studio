@@ -970,6 +970,24 @@ def link_targets(text):
     return found
 
 
+# What a wiki writes where the writing has not happened yet. Solo Leveling
+# heads fourteen of its twenty arcs and puts "Coming soon!" under each, and an
+# arc offering twelve characters of that is worse than no arc at all.
+_PLACEHOLDER_TEXT = re.compile(
+    r"^(coming soon|to be added|to be announced|tba|tbd|tbc|n/?a"
+    r"|under construction|work in progress|wip|stub|placeholder"
+    r"|no information( available)?|not (yet )?(available|written|added)"
+    r"|this section is empty|add(ing)? soon|pending)[!.…]*$", re.I)
+
+
+def is_placeholder(text):
+    """True when a section says only that nobody has written it yet."""
+    stripped = re.sub(r"\s+", " ", (text or "")).strip(" " + chr(10) + chr(9) + "*-•.!…")
+    if not stripped:
+        return True
+    return bool(_PLACEHOLDER_TEXT.match(stripped))
+
+
 def trim_text(text, limit):
     """
     Cut text to `limit` characters on a paragraph or sentence boundary.
