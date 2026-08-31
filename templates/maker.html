@@ -1790,11 +1790,11 @@ function renderWorks(term) {
 
   grid.innerHTML = items.map(w => `
     <button class="work-card" onclick="chooseWork(this)" data-title="${esc(w.title)}">
-      <span class="tile-fallback">${esc(initials(w.title))}</span>
+      <span class="tile-fallback">${esc(initials(w.label || w.title))}</span>
       ${w.image ? `<img alt="" loading="lazy" src="${esc(imgSrc(w.image))}"
                        onerror="this.remove()">` : ''}
       <span class="tile-scrim"></span>
-      <span class="work-name">${esc(w.title)}</span>
+      <span class="work-name">${esc(w.label || w.title)}</span>
       <span class="work-go">${w.group ? esc(w.group) + ' · ' : ''}Use this →</span>
     </button>`).join('');
 }

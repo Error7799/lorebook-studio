@@ -423,6 +423,30 @@ A wiki documenting a single story has no question to ask, and opens straight
 at its categories.
 
 
+#### A season that is its own story
+
+American Horror Story tells a self-contained story per season — different cast,
+different setting, only the title in common — and files them accordingly:
+
+```
+Category:Stories
+  American Horror Story/Murder House
+  American Horror Story/Coven          ← subpages, not "Season 1"
+```
+
+Four things had to give way before those appeared. There is no `Seasons`
+category on that wiki, so `Stories` is now a shelf (plural only — "American
+Horror Story" is the wiki's own subject, not a shelf). `{{Infobox/Story}}`
+now marks a work. A work may be a **subpage** of the franchise it belongs to,
+where before any title with a slash was rejected — though an article's own tabs
+(`/Synopsis`, `/Gallery`) still never are. And the franchise name is stripped
+off a subpage to find the season's own, so `Category:Murder House` is found.
+
+The tile, the picker heading and the scope banner all say **Murder House**,
+not "American Horror Story/Murder House": the franchise is the wiki, and
+repeating it in every heading says nothing.
+
+
 #### Stories kept in template subpages
 
 The My Hero Academia wiki keeps each character's synopsis in template

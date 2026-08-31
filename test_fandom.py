@@ -756,6 +756,26 @@ check("a page's own infobox can correct the shelf it was found on",
       [F.template_kind([t]) for t in ("Game", "Movie", "TV")],
       ["Video Games", "Movies", "TV Series"])
 
+# ── A season can be a subpage of its franchise ─────────────────
+# American Horror Story tells a self-contained story per season and files each
+# as "American Horror Story/Murder House", under a category called "Stories".
+# There is no "Seasons" category on that wiki at all.
+check("a shelf can be called Stories",
+      next((k for suf, k in F.WORK_SUFFIXES if suf == "stories"), None),
+      "Stories")
+check("{{Infobox/Story}} marks a work",
+      F.is_work_template("Infobox/Story"), True)
+check("a work can be a subpage of the franchise",
+      F._is_work_candidate("American Horror Story/Murder House"), True)
+check("…but an article's own tabs never are",
+      [F._is_work_candidate(t) for t in
+       ("Satoru Gojo/Synopsis", "Elsa/Gallery", "Koichi/Relationships")],
+      [False, False, False])
+check("the franchise name is stripped to find the season's own",
+      F._work_names("American Horror Story/Murder House",
+                    "American Horror Story Wiki"),
+      ["American Horror Story/Murder House", "Murder House"])
+
 # ── Reporting ─────────────────────────────────────────────────────────────
 if FAILED:
     print(f"\n{len(FAILED)} check(s) failed:\n")

@@ -702,6 +702,10 @@ WORK_SUFFIXES = [
     ("artbooks", "Artbooks"),
     ("specials", "Specials"),
     ("seasons", "Seasons"),
+    # American Horror Story tells a self-contained story per season and files
+    # them under "Stories" — no "Seasons" category anywhere. Only the plural:
+    # "American Horror Story" is the wiki's own subject, not a shelf.
+    ("stories", "Stories"),
     ("movies", "Movies"),
     ("films", "Movies"),
     ("series", "TV Series"),
@@ -717,7 +721,8 @@ WORK_SUFFIXES = [
 ]
 
 # The order the tabs are offered in, so the thing most people mean comes first.
-KIND_ORDER = ["Movies", "TV Series", "Seasons", "Short Films", "Specials",
+KIND_ORDER = ["Movies", "TV Series", "Seasons", "Stories", "Short Films",
+              "Specials",
               "Anime", "Manga", "Comics", "Spin-offs", "OVA",
               "Video Games", "Novels", "Books", "Artbooks", "Documentaries"]
 
@@ -831,10 +836,18 @@ def _is_work_candidate(title):
     Way Home" are all titled that way, and fifteen Marvel films were being
     thrown out as though they were "Category:" pages.
     """
-    if not title or "/" in title:
+    if not title:
         return False
     if _RESERVED_PREFIX.match(title):
         return False
+    # A work can be a subpage of the franchise it belongs to: every American
+    # Horror Story season is filed as "American Horror Story/Murder House".
+    # What rules a subpage out is the *kind* of subpage it is.
+    if "/" in title:
+        tail = title.rsplit("/", 1)[1].strip()
+        # …and the tabs of an article are its parts, never works of their own.
+        if _SUBPAGE_NOISE.match(tail) or tail in SUBPAGE_SUFFIXES:
+            return False
     return not _META_SUBPAGE.search(title)
 
 
@@ -1100,6 +1113,10 @@ def discover_works(api, info=None):
     answer = [{"kind": kind,
                "held": held_for(kind, len(items)),
                "works": [{"title": i["title"], "group": i["group"],
+                          # A season filed as a subpage of its franchise reads
+                          # as "Murder House", not "American Horror
+                          # Story/Murder House" — the franchise is the wiki.
+                          "label": i["title"].rsplit("/", 1)[-1].strip(),
                           "image": posters.get(i["title"], "")} for i in items]}
               for kind, items in kept]
     _WORKS_CACHE[api] = answer
@@ -2214,7 +2231,7 @@ _WORK_INFOBOX = re.compile(
     # step that was meant to offer them.
     r"\b(tv|television|documentary|short film|miniseries|web series"
     r"|movie|film|episode|season|comic|issue|game|book|novel|series|show"
-    r"|special|one[- ]shot|short"
+    r"|special|one[- ]shot|short|stor(y|ies)"
     # Comics wikis name this kind of page after the medium rather than calling
     # it a series — {{Infobox manga}} indexes a story exactly the way
     # {{Series Infobox}} does.
@@ -3041,7 +3058,7 @@ def _work_names(title, wiki_name=""):
     names = [title]
     parent = scope.parent_name(wiki_name or "")
     if parent:
-        match = re.match(rf"^{re.escape(parent)}[\s:–—-]+(.+)$", title, re.I)
+        match = re.match(rf"^{re.escape(parent)}[\s:/–—-]+(.+)$", title, re.I)
         if match and len(match.group(1).strip()) >= 3:
             names.append(match.group(1).strip())
     return list(dict.fromkeys(n for n in names if n))
@@ -3164,6 +3181,11 @@ def build_work_scope(ref, info, title, raw, log=None):
     shaped = scope.to_browse(ranked, ident, ref, info, seeds)
     shaped["scope"]["unit"] = unit or "instalments"
     shaped["scope"]["filed"] = len(direct)
+    # A season filed as a subpage of its franchise is called by its own name:
+    # "Murder House", not "American Horror Story/Murder House". The franchise
+    # is the wiki, and repeating it in every heading says nothing.
+    if "/" in title and is_wiki_subject(title.rsplit("/", 1)[0], info.get("name")):
+        shaped["scope"]["series"] = title.rsplit("/", 1)[-1].strip()
     return shaped
 
 
