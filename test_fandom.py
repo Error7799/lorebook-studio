@@ -279,14 +279,14 @@ Gojo is sealed inside the Prison Realm.
 """
 
 nested = F.story_sections(NESTED)
-check("the empty container heading is dropped",
-      [s["title"] for s in nested],
-      ["History", "Gojo's Past Arc", "Shibuya Incident Arc"])
 check("the arcs are the arcs",
       [s["title"] for s in nested if s["is_arc"]],
       ["Gojo's Past Arc", "Shibuya Incident Arc"])
 check("a lead-in above them is not an arc",
       next(s["is_arc"] for s in nested if s["title"] == "History"), False)
+check("an empty container is scaffolding and does not survive the fold",
+      [s["title"] for s in F.collapse_sections(nested)],
+      ["History", "Gojo's Past Arc", "Shibuya Incident Arc"])
 
 FLAT = """== Sky Egg Arc ==
 Koichi climbs the tower.
@@ -308,10 +308,12 @@ He is slowed by the wind.
 Koichi becomes a sidekick.
 """
 scened = F.story_sections(SCENES)
-check("a scene inside an arc does not become an arc of its own",
-      [s["title"] for s in scened], ["Sky Egg Arc", "Epilogue Arc"])
-check("…its prose is folded into the arc above it",
-      "The Ascent: He is slowed by the wind." in scened[0]["text"], True)
+check("a scene inside an arc is not itself an arc",
+      [(s["title"], s["is_arc"]) for s in scened],
+      [("Sky Egg Arc", True), ("The Ascent", False), ("Epilogue Arc", True)])
+check("…and with nothing picked its prose folds into the arc above it",
+      "The Ascent: He is slowed by the wind."
+      in F.collapse_sections(scened)[0]["text"], True)
 
 check("a heading that names an arc is recognised",
       [bool(F._ARC_TITLE.search(t)) for t in
@@ -558,15 +560,34 @@ The Flaxans attack and the Guardians answer.
 === New Employment ===
 He starts working for the agency that lied to him.
 """
+# The tree keeps every heading, so a single scene can be picked on its own…
 seasons = F.story_sections(SEASONS)
-check("an empty arc heading survives to hold its scenes",
-      [s["title"] for s in seasons], ["Background", "Season 1", "Season 2"])
-check("…and every one of them is an arc",
-      [s["is_arc"] for s in seasons], [True, True, True])
+check("the tree keeps the scenes as well as the seasons",
+      [s["title"] for s in seasons],
+      ["Background", "Early Life", "Season 1", "The Birth of Invincible",
+       "Flaxan Invasion", "Season 2", "New Employment"])
+check("a scene knows which season encloses it",
+      [s["path"] for s in seasons if s["title"] == "Flaxan Invasion"],
+      [["season 1", "flaxan invasion"]])
+
+# …and with nothing picked it folds back to something readable.
+folded = F.collapse_sections(seasons)
+check("an empty season heading survives to hold its scenes",
+      [s["title"] for s in folded], ["Background", "Season 1", "Season 2"])
 check("the scenes are folded into the season they belong to",
-      "Flaxan Invasion" in seasons[1]["text"], True)
+      "Flaxan Invasion" in folded[1]["text"], True)
 check("nothing lands in the wrong season",
-      "Flaxan Invasion" in seasons[2]["text"], False)
+      "Flaxan Invasion" in folded[2]["text"], False)
+
+# Picking an arc takes its scenes; picking a scene takes only that scene.
+check("picking a season takes the scenes inside it",
+      F.path_matches(["season 1", "flaxan invasion"], {"season 1"}), True)
+check("picking one scene takes only that scene",
+      [F.path_matches(p, {"flaxan invasion"}) for p in
+       (["season 1", "flaxan invasion"], ["season 1", "the birth of invincible"])],
+      [True, False])
+check("picking nothing keeps everything",
+      F.path_matches(["season 2"], None), True)
 
 # The season page links its episodes, and those name the world the cast
 # moves through — a cast list alone gives a lorebook no places or factions.
@@ -614,6 +635,63 @@ check("a citation template is not an infobox",
        ("Cite book", "Infobox film", "Movie", "TV", "Navbox series",
         "Character Infobox")],
       [False, True, True, True, False, False])
+
+# ── Arcs inside arcs ────────────────────────────────
+# Blue Lock nests matches inside arcs inside a plot, and is not consistent
+# about the depth: later arcs sit at level 2 beside the plot rather than under
+# it. Depth cannot decide what an arc is; the name does, at any level.
+NESTED_ARCS = """== History ==
+He played for his school.
+
+== Plot ==
+
+=== Introduction Arc ===
+He is invited to Blue Lock.
+
+=== First Selection Arc ===
+
+==== Team X vs Team Z ====
+Team Z wins on a last-minute goal.
+
+==== Team Y vs Team Z ====
+Team Z loses and has to regroup.
+
+== Second Selection Arc ==
+The survivors are paired off.
+"""
+tree = F.story_sections(NESTED_ARCS)
+check("an arc is an arc at whatever level the wiki files it",
+      [t["title"] for t in tree if t["is_arc"]],
+      ["Introduction Arc", "First Selection Arc", "Second Selection Arc"])
+check("a match knows the arc it belongs to",
+      [t["path"] for t in tree if t["title"] == "Team X vs Team Z"],
+      [["plot", "first selection", "team x vs team z"]])
+
+check("picking the arc takes every match in it",
+      [F.path_matches(t["path"], {"first selection"}) for t in tree
+       if t["title"].startswith("Team")],
+      [True, True])
+check("picking one match takes only that match",
+      [F.path_matches(t["path"], {"team x vs team z"}) for t in tree
+       if t["title"].startswith("Team")],
+      [True, False])
+check("a different arc is untouched by either",
+      F.path_matches([t["path"] for t in tree
+                      if t["title"] == "Second Selection Arc"][0],
+                     {"first selection"}), False)
+
+# With nothing picked the tree folds to something readable — but "Plot" is
+# scaffolding two levels above the matches, so folding into it would merge
+# every arc into one block.
+folded = [t["title"] for t in F.collapse_sections(tree)]
+check("the plot container steps aside and its arcs stand up",
+      folded,
+      ["History", "Introduction Arc", "First Selection Arc",
+       "Second Selection Arc"])
+check("…carrying the matches inside them",
+      all(w in [t for t in F.collapse_sections(tree)
+                if t["title"] == "First Selection Arc"][0]["text"]
+          for w in ("Team X vs Team Z:", "Team Y vs Team Z:")), True)
 
 # ── Reporting ─────────────────────────────────────────────────────────────
 if FAILED:

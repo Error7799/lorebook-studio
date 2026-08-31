@@ -94,10 +94,18 @@ def parent_name(wiki_name):
                   wiki_name or "", flags=re.I).strip()
 
 
+# Words that name a format rather than a story. A title differing from the
+# wiki's subject only by one of these is that subject, not a spin-off.
+_FORMAT_WORD = re.compile(
+    r"^(manga|anime|film|movie|novel|light novel|game|video game|comic|series"
+    r"|tv series|tv|live[- ]action|animated|book|audio drama|musical|manhwa"
+    r"|webtoon|ova|special|franchise|season \d+|\d{4} film|\d{4})$", re.I)
+
+
 def _usable(name):
-    """Reject names too short or too numeric to prefix-search safely."""
+    """Reject names too short, too numeric or too generic to search on."""
     name = (name or "").strip(" :-–—")
-    if len(name) < 3 or name.isdigit():
+    if len(name) < 3 or name.isdigit() or _FORMAT_WORD.match(name):
         return ""
     return name
 
@@ -117,7 +125,11 @@ def short_names(title, parent):
     Guessing wrong costs one fruitless request, so all the plausible forms are
     tried and whichever finds instalments wins.
     """
-    title = (title or "").strip()
+    # "Blue Lock (Manga)" is not a spin-off called "(Manga)" — it is the wiki's
+    # own subject, published in one of its formats. Left in, the qualifier
+    # became the sub-series name and scoping searched the wiki for pages
+    # beginning "(Manga)", which found fifteen of its two hundred characters.
+    title = re.sub(r"\s*\([^)]*\)\s*$", "", (title or "")).strip()
     found = []
 
     if parent:

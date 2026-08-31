@@ -942,6 +942,26 @@
     }
     .arc-head b { color: var(--accent); font-weight: 700; }
     .arc-head .arc-actions { margin-left: auto; display: flex; gap: .35rem; }
+    /* Chips wrap, so indentation cannot show nesting — a child is marked
+       instead, and tinted so a row of them reads as belonging to the arc
+       above rather than as more arcs. */
+    .arc-chip.child {
+      font-size: .7rem;
+      padding-left: .4rem;
+      border-style: dashed;
+      background: rgba(255,154,98,.05);
+    }
+    .arc-chip.child::before {
+      content: "B3";
+      margin-right: .3rem;
+      color: var(--muted);
+    }
+    .arc-chip.child.on::before { color: var(--accent); }
+    .arc-twist {
+      display: inline-block; width: .8rem; margin-right: .1rem;
+      color: var(--muted); font-size: .7rem;
+    }
+    .arc-twist:hover { color: var(--accent); }
     .arc-chips { display: flex; gap: .35rem; flex-wrap: wrap; }
     .arc-chip {
       display: inline-flex;
@@ -2040,35 +2060,82 @@ async function refreshArcs() {
   // to it is the point of having scoped; the Vigilantes arcs are all called
   // "Vigilantes …", and a prefix test matched "Vigilantes Beginnings Arc" and
   // unticked the other ten — throwing away the story the user asked for.
+  arcOpen = new Set();
   if (!arcOff.size && browseData.scope) {
     const want = (browseData.scope.short || browseData.scope.series || '').toLowerCase();
     const isStory = a => a.key === want
                       || a.key.endsWith(' ' + want) || want.endsWith(' ' + a.key);
     const hits = want ? arcList.filter(isStory) : [];
     if (hits.length === 1 && arcList.length > 1) {
-      for (const a of arcList) if (a.key !== hits[0].key) arcOff.add(a.key);
+      const keep = new Set([hits[0].key,
+                            ...arcChildren(hits[0].key).map(k => k.key)]);
+      for (const a of arcList) if (!keep.has(a.key)) arcOff.add(a.key);
     }
   }
   renderArcs();
   box.classList.add('show');
 }
 
+/* Arcs nest: Blue Lock's First Selection Arc holds four matches, and the same
+   four hang under it on every character's page. A parent chip governs its
+   children — tick the arc for the whole thing, or open it and take one match. */
+let arcOpen = new Set();
+
+function arcChildren(key) { return arcList.filter(a => a.parent === key); }
+
 function renderArcs() {
+  const tops = arcList.filter(a => !a.parent);
   document.getElementById('arc-count').textContent =
     `${arcList.length} story arc${arcList.length === 1 ? '' : 's'}`;
-  document.getElementById('arc-chips').innerHTML = arcList.map((a, i) => {
+
+  const chip = (a, i) => {
     const on = !arcOff.has(a.key);
-    const kb = a.chars >= 1000 ? `${Math.round(a.chars / 1000)}k` : a.chars;
-    return `<button class="arc-chip ${on ? 'on' : ''}" onclick="toggleArc(${i})"
+    const kids = arcChildren(a.key);
+    // A parent's own heading often carries no prose — the story is in its
+    // parts — so showing "0" beside it says the opposite of the truth.
+    const size = a.chars + kids.reduce((n, k) => n + k.chars, 0);
+    const kb = size >= 1000 ? `${Math.round(size / 1000)}k` : size;
+    const open = arcOpen.has(a.key);
+    const twist = kids.length
+      ? `<span class="arc-twist" onclick="toggleArcOpen(event, '${esc(a.key)}')"
+              title="${kids.length} parts">${open ? '▾' : '▸'}</span>`
+      : '';
+    return `<button class="arc-chip ${on ? 'on' : ''} ${a.parent ? 'child' : ''}"
+                    onclick="toggleArc(${i})"
                     title="${esc(a.name)} — in ${a.pages} of the selected pages">
-      ${on ? '☑' : '☐'} ${esc(a.name)} <span class="arc-size">${kb}</span>
+      ${twist}${on ? '☑' : '☐'} ${esc(a.name)}
+      <span class="arc-size">${kb}</span>
     </button>`;
-  }).join('');
+  };
+
+  const html = [];
+  for (const top of tops) {
+    html.push(chip(top, arcList.indexOf(top)));
+    if (!arcOpen.has(top.key)) continue;
+    for (const kid of arcChildren(top.key)) {
+      html.push(chip(kid, arcList.indexOf(kid)));
+    }
+  }
+  document.getElementById('arc-chips').innerHTML = html.join('');
 }
 
+function toggleArcOpen(event, key) {
+  event.stopPropagation();
+  if (arcOpen.has(key)) arcOpen.delete(key); else arcOpen.add(key);
+  renderArcs();
+}
+
+/* Ticking an arc ticks the parts inside it, because that is what picking an
+   arc means; unticking it drops them the same way. */
 function toggleArc(i) {
-  const key = arcList[i].key;
-  if (arcOff.has(key)) arcOff.delete(key); else arcOff.add(key);
+  const arc = arcList[i];
+  const turningOn = arcOff.has(arc.key);
+  for (const key of [arc.key, ...arcChildren(arc.key).map(k => k.key)]) {
+    if (turningOn) arcOff.delete(key); else arcOff.add(key);
+  }
+  // A part cannot be kept if the arc holding it was dropped, and a part being
+  // kept means the arc is at least partly in.
+  if (arc.parent && turningOn) arcOff.delete(arc.parent);
   renderArcs();
 }
 

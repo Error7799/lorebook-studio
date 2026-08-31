@@ -60,6 +60,9 @@ SECTION_BLOCKLIST = [
     # numbering / indexes  (note: "appearance" singular is KEPT — it is the
     # physical description, which is exactly what roleplay needs)
     r"appearances", r"list of appearances", r"appearances in .*",
+    # Any "List of …" heading: an index of the thing, not the thing. Blue
+    # Lock's synopsis ends with a "List of Matches" table of links.
+    r"lists? of .*", r"index of .*",
     # Qualified appearance indexes — "Chapter Appearances", "Anime
     # Appearances", "Vigilantes Chapter Appearances". These are tables of
     # instalment numbers, so they clean down to a dozen characters of nothing

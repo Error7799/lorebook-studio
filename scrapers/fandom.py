@@ -1566,21 +1566,34 @@ def arc_key(name):
     return key
 
 
-def arc_matches(name, selected):
+def _same_arc(key, want):
     """
-    True when an arc heading is one the user picked.
-
     The same arc is not spelled the same on every page — Yuji's synopsis heads
     it "Modulo" and Yuka's heads it "Jujutsu Kaisen Modulo" — so a heading also
     matches a selection that is one of its whole-word tails, and vice versa.
     """
+    return key == want or key.endswith(" " + want) or want.endswith(" " + key)
+
+
+def arc_matches(name, selected):
+    """True when an arc heading is one the user picked."""
     if selected is None:
         return True
     key = arc_key(name)
-    for want in selected:
-        if key == want or key.endswith(" " + want) or want.endswith(" " + key):
-            return True
-    return False
+    return any(_same_arc(key, want) for want in selected)
+
+
+def path_matches(path, selected):
+    """
+    True when any arc enclosing this section was picked.
+
+    Arcs nest, so picking "First Selection Arc" has to bring its four matches
+    with it while picking "Team X vs Team Z" brings only that one. Testing the
+    whole path rather than the heading is what makes both work.
+    """
+    if selected is None:
+        return True
+    return any(_same_arc(key, want) for key in (path or []) for want in selected)
 
 
 # Headings that name a part of a story outright. This is the signal the wikis
@@ -1650,14 +1663,24 @@ def _arc_level(sections):
 
 def story_sections(raw):
     """
-    A story tab's sections, split at the level its arcs are told at.
+    A story tab's sections, keeping the shape the wiki wrote them in.
 
-    Anything deeper than that level is folded into the arc above it — a scene
-    budgeted as a section of its own comes out as a stub — and anything
-    shallower is a lead-in, kept always rather than hidden behind an arc
-    filter.
+    Arcs nest. Blue Lock's synopsis has matches inside arcs inside a plot:
 
-    Returns [{title, level, priority, text, is_arc}, …] in reading order.
+        == Plot ==
+        === First Selection Arc ===
+        ==== Team X vs Team Z ====
+
+    — and the wiki is not even consistent about the depth, filing later arcs
+    at level 2 beside the plot rather than under it. So nothing is folded away
+    here: every heading becomes a node carrying the `path` of headings
+    enclosing it, outermost first. Picking "First Selection Arc" then takes
+    its matches with it, and picking "Team X vs Team Z" takes only that one.
+
+    `is_arc` marks the level the story is mainly told at, which is what the
+    chooser shows first; everything else nests under it.
+
+    Returns [{title, level, depth, priority, text, is_arc, key, path}, …].
     """
     _, raw_sections = W.split_sections(raw or "")
     sections = []
@@ -1670,34 +1693,83 @@ def story_sections(raw):
         return []
 
     arc_level = _arc_level(sections)
+    out, stack = [], []          # stack: (heading level, arc key) enclosing us
 
-    out = []
     for index, section in enumerate(sections):
-        if section["level"] > arc_level and out:
-            if section["text"]:
-                head = f"{section['title']}: " if section["title"] else ""
-                joiner = chr(10) * 2
-                out[-1]["text"] = (out[-1]["text"] + joiner
-                                   + head + section["text"]).strip()
-                out[-1]["priority"] = min(out[-1]["priority"],
-                                          section["priority"])
+        while stack and stack[-1][0] >= section["level"]:
+            stack.pop()
+
+        # A heading with neither prose nor anything beneath it is a stray.
+        following = sections[index + 1] if index + 1 < len(sections) else None
+        holds_more = bool(following and following["level"] > section["level"])
+        if not section["text"] and not holds_more:
             continue
-        if not section["text"]:
-            # An arc written entirely in scenes has no prose directly under
-            # its own heading: "Season 1" is empty and its eight subsections
-            # are the season. Dropping it left those scenes with nothing to
-            # fold into, and 111 KB of history came out as one nameless block.
-            # Only at the arc level, though — an empty "Synopsis" sitting
-            # above arcs of its own is still scaffolding.
-            following = sections[index + 1] if index + 1 < len(sections) else None
-            container = (section["level"] == arc_level and following
-                         and following["level"] > section["level"])
-            if not container:
-                continue
-        section["is_arc"] = section["level"] == arc_level
+
+        key = arc_key(section["title"])
+        section["key"] = key
+        section["path"] = [k for _, k in stack] + [key]
+        section["depth"] = len(stack)
+        section["is_arc"] = (bool(_ARC_TITLE.search(section["title"]))
+                             or section["level"] == arc_level)
+        stack.append((section["level"], key))
         out.append(section)
+
     return out
 
+
+def _children_of(sections, index):
+    """The nodes directly beneath sections[index]."""
+    depth = sections[index]["depth"]
+    out = []
+    for section in sections[index + 1:]:
+        if section["depth"] <= depth:
+            break
+        if section["depth"] == depth + 1:
+            out.append(section)
+    return out
+
+
+def collapse_sections(sections):
+    """
+    Fold a story tab back down to its arcs.
+
+    The tree is what makes a single match selectable; it is not what anybody
+    wants to read having selected nothing. Unfiltered, Blue Lock would come
+    out as forty headings holding a paragraph each.
+
+    Collapsing by depth is wrong here — "Plot" is scaffolding two levels above
+    the matches, and folding into it merges every arc into one 68 KB block. So
+    the target is the arc itself: a heading that holds only other arcs is
+    scaffolding and steps aside, while one holding scenes keeps them.
+    """
+    targets = []
+    for index, section in enumerate(sections):
+        if not section["is_arc"]:
+            # A lead-in standing outside every arc is its own section, not
+            # part of one — folding it into the arc below it would be wrong,
+            # and dropping it lost the opening line of Gojo's history.
+            if section["depth"] == 0 and section["text"]:
+                targets.append(index)
+            continue
+        children = _children_of(sections, index)
+        holds_only_arcs = bool(children) and all(c["is_arc"] for c in children)
+        if section["text"] or not holds_only_arcs:
+            targets.append(index)
+    targets = set(targets)
+
+    merged, host = [], None
+    for index, section in enumerate(sections):
+        if index in targets:
+            host = dict(section)
+            merged.append(host)
+            continue
+        if host is None or not section["text"]:
+            continue
+        head = f"{section['title']}: " if section["title"] else ""
+        joiner = chr(10) * 2
+        host["text"] = (host["text"] + joiner + head + section["text"]).strip()
+        host["priority"] = min(host["priority"], section["priority"])
+    return [s for s in merged if s["text"]]
 
 
 def page_arcs(records, title):
@@ -1720,38 +1792,51 @@ def page_arcs(records, title):
 
         if not _STORY_TAB.match(suffix.strip()):
             continue        # a Relationships tab is people, not story arcs
-        for section in story_sections(raw):
-            # Only the level the arcs are actually told at becomes a chip;
-            # "History" is a lead-in, not a part of the story to filter by.
-            if not section["is_arc"]:
+        parsed = story_sections(raw)
+        for index, section in enumerate(parsed):
+            # A heading that holds nothing but other arcs is scaffolding —
+            # "Plot" and "Synopsis" are not parts of the story to choose
+            # between, they are where the parts are kept.
+            children = _children_of(parsed, index)
+            if not section["text"] and children and all(c["is_arc"] for c in children):
                 continue
             name = (section["title"] or suffix).strip()
-            found.append({"name": name, "key": arc_key(name),
+            found.append({"name": name, "key": section["key"] or arc_key(name),
+                          "depth": section["depth"], "is_arc": section["is_arc"],
+                          "parent": section["path"][-2] if len(section["path"]) > 1 else "",
                           "chars": len(section["text"])})
     return found
 
 
 def collect_arcs(records, titles):
     """
-    Every arc across a batch of pages, with how many of them cover it.
+    Every arc across a batch of pages, nested, with how many cover each one.
 
     A wiki tells the same story from each character's point of view, so the
     arcs repeat — which is what makes one list of chips able to filter a whole
-    import rather than needing a choice per entry.
+    import rather than needing a choice per entry. Isagi's "Team X vs Team Z"
+    and Bachira's are the same match seen twice, so they are one chip, sitting
+    under the First Selection Arc chip that both of them nest it in.
     """
     seen = {}
     for title in titles:
         for arc in page_arcs(records, title):
             row = seen.setdefault(arc["key"], {
-                "key": arc["key"], "name": arc["name"],
-                "names": set(), "pages": 0, "chars": 0})
+                "key": arc["key"], "name": arc["name"], "names": set(),
+                "pages": 0, "chars": 0, "depth": arc["depth"],
+                "parent": arc["parent"], "is_arc": arc["is_arc"]})
             row["pages"] += 1
             row["chars"] += arc["chars"]
             row["names"].add(arc["name"])
-            # Prefer the fullest spelling of the name ("Jujutsu Kaisen Modulo"
-            # over "Modulo") so the chip is unambiguous.
+            # The shallowest place any page files it is where it belongs: one
+            # character may nest a match a level deeper than another does.
+            if arc["depth"] < row["depth"]:
+                row["depth"] = arc["depth"]
+                row["parent"] = arc["parent"]
+            row["is_arc"] = row["is_arc"] or arc["is_arc"]
             if len(arc["name"]) > len(row["name"]):
                 row["name"] = arc["name"]
+
     # Fold a long spelling into the short one it ends with, so "Modulo" and
     # "Jujutsu Kaisen Modulo" are offered as one chip rather than two.
     for key in sorted(seen, key=len):
@@ -1765,13 +1850,31 @@ def collect_arcs(records, titles):
     for row in seen.values():
         row["name"] = min(row["names"], key=len) if row["names"] else row["name"]
         row.pop("names", None)
-        # A heading on one page holding a couple of lines is a subsection of
-        # that page's own layout ("Members", "Base of Operations"), not a part
-        # of the story worth offering as a filter.
+        # A heading on one page holding a couple of lines is that page's own
+        # layout ("Members", "Base of Operations"), not part of the story.
         if row["pages"] < 2 and row["chars"] < MIN_ARC_CHARS:
             continue
         out.append(row)
-    return sorted(out, key=lambda a: (-a["pages"], -a["chars"]))
+
+    # A child whose parent did not survive would be orphaned in the chooser,
+    # so it is promoted rather than hidden.
+    kept = {row["key"] for row in out}
+    for row in out:
+        if row["parent"] and row["parent"] not in kept:
+            row["parent"] = ""
+            row["depth"] = 0
+
+    # Parents first, each followed by its own children, so the chooser can
+    # render the nesting by walking the list once.
+    tops = [r for r in out if not r["parent"]]
+    tops.sort(key=lambda a: (-a["pages"], -a["chars"]))
+    ordered = []
+    for top in tops:
+        ordered.append(top)
+        kids = [r for r in out if r["parent"] == top["key"]]
+        kids.sort(key=lambda a: (-a["pages"], -a["chars"]))
+        ordered += kids
+    return ordered
 
 
 def subpage_sections(records, title, budget, arcs=None, skip=None):
@@ -1805,13 +1908,18 @@ def subpage_sections(records, title, budget, arcs=None, skip=None):
         # The arc filter answers "which parts of the story", so it only
         # applies to the story tab. A Relationships page is kept whole.
         story = bool(_STORY_TAB.match(suffix.strip()))
-        for section in story_sections(raw):
+        # With nothing picked, the tree is folded back to its arcs — forty
+        # headings of a paragraph each is not an entry anybody wants to read.
+        # With something picked, it is kept whole so a single match can be
+        # taken on its own.
+        parsed = story_sections(raw)
+        sections = parsed if (story and arcs is not None) else collapse_sections(parsed)
+        for section in sections:
             text = section["text"]
             name = (section["title"] or suffix).strip()
-            # The arc filter answers "which parts of the story", so it applies
-            # only to the arcs themselves. A lead-in above them is short and
-            # sets the scene, so it is kept whichever arcs were picked.
-            if story and section["is_arc"] and not arc_matches(name, arcs):
+            # Testing the whole path, not the heading: picking an arc takes the
+            # scenes nested inside it, and picking one scene takes only that.
+            if story and not path_matches(section.get("path"), arcs):
                 continue
             collected.append({
                 "title":    name,
@@ -2491,6 +2599,19 @@ def scrape_article(url, notes="", budget=DEFAULT_BUDGET, ref=None, info=None,
                 ref, info, record["title"], raw, log) or browse
         except FandomError:
             pass
+
+    # The wiki's own subject, in one of its formats. There is nothing to narrow
+    # to — everything on the wiki is in this story — so the answer is the whole
+    # wiki rather than the handful of pages sharing its name.
+    if ((not browse or not browse["groups"])
+            and is_wiki_subject(record["title"], info.get("name"))):
+        say = log.append if log is not None else (lambda _m: None)
+        say(f"“{record['title']}” is what this whole wiki is about — "
+            f"opening all of it.")
+        try:
+            browse = browse_wiki(url, ref=ref, info=info, works=False) or browse
+        except FandomError:
+            pass
     return profile, browse
 
 
@@ -2837,6 +2958,22 @@ def merge_browse(base, extra):
                 tiers[page] = "core"
     base["scope"] = base.get("scope") or extra.get("scope")
     return base
+
+
+def is_wiki_subject(title, wiki_name):
+    """
+    True when a page is the thing the whole wiki is about.
+
+    "Blue Lock (Manga)" on the Blue Lock wiki is not one story among many —
+    it is *the* story, published in one format. Scoping to it means the whole
+    wiki, so narrowing to pages whose titles start with its name is exactly
+    wrong: it found fifteen of the wiki's two hundred and nineteen characters.
+    """
+    parent = scope.parent_name(wiki_name or "")
+    if not parent:
+        return False
+    bare = re.sub(r"\s*\([^)]*\)\s*$", "", title or "").strip()
+    return bare.lower() == parent.lower()
 
 
 def is_series_page(infobox_type, raw, title, wiki_name):

@@ -480,6 +480,47 @@ and a species, each ranked by how much of the season it appears in.
 The billed cast is never demoted by that counting: anyone the page names
 outright is core whether they appear in two episodes or eight.
 
+#### Arcs inside arcs
+
+A story is not a flat list of arcs. Blue Lock nests matches inside arcs inside
+a plot, and is not even consistent about the depth — later arcs sit at level 2
+beside the plot rather than under it:
+
+```
+== Plot ==
+=== First Selection Arc ===
+==== Team X vs Team Z ====
+== Second Selection Arc ==      ← same kind of thing, two levels up
+```
+
+So depth cannot decide what an arc is; the wiki's own naming does, at whatever
+level it sits. Every heading becomes a node carrying the arcs enclosing it, and
+the chooser nests them:
+
+```
+☑ Introduction Arc  15k    ▾ ☑ First Selection Arc  86k
+                             ↳ ☑ Team V vs Team Z  49k
+                             ↳ ☑ Team X vs Team Z   8k
+```
+
+Ticking the arc takes its matches with it; opening it and ticking one match
+takes only that. And because the chips are gathered across every selected page,
+**one choice applies to the whole import** — "Team X vs Team Z" gives Isagi's
+account of the match and Bachira's, each from their own page:
+
+| Picked | Isagi | Bachira |
+|--------|------:|--------:|
+| everything | 6 arcs | 8 arcs |
+| First Selection Arc | its 4 matches | its 4 matches |
+| Team X vs Team Z | 4,176 chars | 1,668 chars |
+
+Having picked nothing the tree folds back to its arcs — forty headings holding a
+paragraph each is not an entry anybody wants to read. Folding by depth would be
+wrong here (`Plot` is scaffolding two levels above the matches, and everything
+would merge into one 68 KB block), so a heading that holds only other arcs
+steps aside while one holding scenes keeps them.
+
+
 #### Plot that is written in scenes
 
 A character's History tab is often one heading per season with the story told
@@ -735,6 +776,10 @@ And in `scrapers/fandom.py`:
 | `MIN_ARC_CHARS` | Below this, a one-page heading is layout rather than an arc |
 | `_ARC_TITLE` | Headings that name a part of a story — how the arc level is found |
 | `_CAST_SECTION` | Every heading that is a kind of cast list |
+| `story_sections` | The arc tree, each node carrying the arcs enclosing it |
+| `collapse_sections` | …folded back to its arcs when nothing is picked |
+| `path_matches` | Picking an arc takes its parts; picking a part takes one |
+| `is_wiki_subject` | A work that *is* the wiki — scoping to it means all of it |
 | `instalment_links` | The episodes a work's own page lists, and what it calls them |
 | `work_content_categories` | `Frozen characters`, `Frozen locations` — what a wiki files under a work |
 | `_WORK_CONTENT_SKIP` | …and the ones holding its crew, songs or artwork instead |
