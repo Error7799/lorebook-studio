@@ -531,6 +531,14 @@ def profile_to_entry(profile, uid=0):
 
     name_val = profile.get("name", "")
     category = profile.get("category", "")
+
+    # A short key matches inside other words — "Rin" fires on "ring", "bring"
+    # and "during" — and so does an everyday one. Whole-word matching costs
+    # nothing and is the difference between a key that means somebody and a
+    # key that is in context for the rest of the session.
+    from core.health import COMMON_WORDS, SHORT_KEY
+    fragile = any(len(k) < SHORT_KEY or k.lower() in COMMON_WORDS
+                  for k in keys)
     comment  = (f"{category.upper()}: {name_val}" if category else name_val)[:150]
 
     return {
@@ -539,16 +547,21 @@ def profile_to_entry(profile, uid=0):
         "keysecondary":        [],
         "comment":             comment,
         "content":             content,
-        "constant":            False,
+        "constant":            bool(profile.get("always_on")),
         "vectorized":          False,
         "selective":           True,
         "selectiveLogic":      0,
         "addMemo":             True,
-        "order":               100,
+        # A primer is the ground everything else stands on, so it goes in
+        # first; lower order lands earlier in the prompt.
+        "order":               5 if profile.get("always_on") else 100,
         "position":            0,
         "disable":             False,
         "excludeRecursion":    False,
-        "preventRecursion":    False,
+        # A relationships entry names a dozen people. Left recursive it drags
+        # every one of their entries in behind it and empties the budget in
+        # one activation.
+        "preventRecursion":    bool(profile.get("relates_to")),
         "delayUntilRecursion": False,
         "probability":         100,
         "useProbability":      True,
@@ -558,7 +571,7 @@ def profile_to_entry(profile, uid=0):
         "groupWeight":         100,
         "scanDepth":           None,
         "caseSensitive":       None,
-        "matchWholeWords":     None,
+        "matchWholeWords":     True if fragile else None,
         "useGroupScoring":     None,
         "automationId":        "",
         "role":                None,

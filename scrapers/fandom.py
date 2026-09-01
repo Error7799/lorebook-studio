@@ -2579,7 +2579,17 @@ def _split_aliases(value):
         else:
             buf.append(char)
     parts.append("".join(buf))
-    return [p.strip() for p in parts if p.strip()]
+
+    # Wikis group a long alias field with inline labels — "Codenames:,
+    # Invincible, Invinciboy, Nicknames:, ..." — and a label is not a name.
+    # Left in, "Codenames:" became a trigger word on three separate entries.
+    out = []
+    for part in parts:
+        part = part.strip()
+        if not part or part.rstrip().endswith(":"):
+            continue
+        out.append(part)
+    return out
 
 
 def _first_sentence(text, limit=240):
@@ -2696,6 +2706,108 @@ def build_profile(ref, record, wiki_name=None, notes="", budget=DEFAULT_BUDGET,
     if notes:
         profile["notes"] = notes
     return profile
+
+
+# How much of a work’s own lead the primer keeps. It fires on every single
+# message, so it has to earn its place in a way no other entry does.
+PRIMER_BUDGET = 700
+
+# Sections that describe the world rather than the making of it.
+_PRIMER_SECTION = re.compile(
+    r"^(plot|synopsis|summary|premise|story|overview|setting|background)\b",
+    re.I)
+
+# Sentences about who made a thing, when it came out and what it earned.
+_PRODUCTION_SENTENCE = re.compile(
+    r"\b(directed|produced|animated|distributed|released|premiered|published"
+    r"|serialized|serialised|adapted|licensed|broadcast|aired|streamed"
+    r"|box office|studios?|animation|voices? of|starring|screenplay"
+    r"|soundtrack|budget|grossed|sequel to|based on the .*by)\b", re.I)
+
+
+def _without_production(text):
+    """Drop the sentences about how a thing was made, keep the ones about it."""
+    kept = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text or ""):
+        if sentence.strip() and not _PRODUCTION_SENTENCE.search(sentence):
+            kept.append(sentence.strip())
+    return " ".join(kept)
+
+
+def build_primer(ref, info, title, roster=(), log=None):
+    """
+    A short always-on entry naming the world everything else belongs to.
+
+    Every other entry in a lorebook waits to be mentioned, which leaves the
+    model with nowhere to stand until somebody says a name it recognises — so
+    the first message of a roleplay is the one with the least context behind
+    it. Lorebook authors fix that by hand with a always-on primer; this writes
+    it from the work’s own opening paragraph and the cast about to be
+    imported.
+
+    Returns a profile dict, or None when the page says nothing worth standing
+    on.
+    """
+    say = log.append if log is not None else (lambda _m: None)
+    record = fetch_pages(ref["api"], [title]).get(title) or {}
+    if record.get("missing"):
+        return None
+
+    raw = record.get("wikitext") or ""
+    lead, sections = W.split_sections(raw)
+
+    # The lead of a work’s article is about the making of it — studios,
+    # directors, who voices whom — which is the one thing a roleplay does not
+    # want in context on every single message. Its plot summary is about the
+    # world instead, so that is preferred and the lead is only a fallback with
+    # the production sentences taken out.
+    opening = ""
+    for section in sections:
+        if _PRIMER_SECTION.match((section["title"] or "").strip()):
+            text = W.clean(section["body"]).strip()
+            if len(text) > 120:
+                opening = text
+                break
+    if not opening:
+        opening = _without_production(W.clean(lead).strip())
+    opening = W.trim_text(opening, PRIMER_BUDGET)
+    if not opening:
+        return None
+
+    name = (record.get("title") or title).rsplit("/", 1)[-1].strip()
+    picture = fetch_images(ref["api"], [title]).get(title, "")
+
+    lines = [f"This lorebook covers {name}.", opening]
+    named = [r for r in roster if r][:14]
+    if named:
+        lines.append("Principal cast and places: "
+                     + ", ".join(named) + ".")
+    say(f"Wrote a primer for “{name}” that stays in context throughout.")
+
+    return {
+        "source":        "fandom",
+        "name":          name,
+        "category":      "Lore",
+        "wiki_name":     info.get("name", ""),
+        "site":          ref.get("site", ""),
+        "api":           ref.get("api", ""),
+        "page_title":    title,
+        "page_url":      f"{ref.get('site', '')}/wiki/{quote(title.replace(chr(32), chr(95)))}",
+        "infobox_type":  "",
+        "aliases":       [],
+        "facts":         [],
+        "description":   f"The world {name} takes place in.",
+        "extract":       "",
+        "sections":      [{"title": "The world", "level": 2, "priority": 1,
+                           "text": (chr(10) * 2).join(lines)}],
+        "subpage_sections": 0,
+        "fandom_categories": [],
+        "image":         picture,
+        # Constant: it is the ground the rest of the book stands on, so it
+        # cannot wait to be mentioned.
+        "always_on":     True,
+        "keys":          [name],
+    }
 
 
 def build_relationship_profile(ref, record, records, wiki_name=None,

@@ -704,6 +704,59 @@ than `MIN_TIER_BUDGET`, so no entry is reduced to nothing. On a six-character
 import that is roughly a **28% smaller book with the protagonist untouched**.
 
 
+### Will it actually work?
+
+A lorebook fails quietly. SillyTavern activates entries until the token budget
+runs out and then stops, so a book bigger than its allowance does not error —
+it silently drops whichever entries matched last. Two entries sharing a keyword
+both fire and are both paid for. An entry with no keywords and no always-on
+flag can never fire at all. None of it shows up until you are mid-roleplay
+wondering why the model has forgotten who somebody is.
+
+The rail answers it before that happens:
+
+```
+Fits a 8k context?              12,307 / 1,638
+████████████████████████████████████  over
+● 3 things to look at
+```
+
+The allowance is the 20% of context SillyTavern gives World Info by default;
+click the context size to try another. Expanding the line explains each one —
+which entries share a keyword, which single entry is eating a quarter of the
+budget on its own, which keyword is an everyday word that will sit in context
+for the rest of the session.
+
+Where a problem can be prevented rather than reported, it is. A key shorter
+than four characters or an everyday word is built with **whole-word matching**,
+so "Rin" stops firing on "during". A relationships entry is built
+**non-recursive**, because it names a dozen people and would otherwise drag
+every one of their entries in behind it.
+
+### The world primer
+
+Every other entry waits to be mentioned, which leaves the model with nothing to
+stand on until somebody says a name it recognises — so the opening message of a
+roleplay is the one with the least context behind it. **+ World primer** writes
+a short always-on entry from the story’s own plot summary and the cast being
+imported:
+
+```
+This lorebook covers Season 1.
+
+Mark Grayson is a normal teenager, except for the fact that his father,
+Nolan, is the most powerful superhero on the planet…
+
+Principal cast and places: Invincible, Omni-Man, Debbie Grayson.
+```
+
+It is written from the **plot summary**, not the lead — a work’s opening
+paragraph is about studios, directors and who voices whom, which is the one
+thing a roleplay does not want in context on every single message. Where a page
+has no plot section, the lead is used with the production sentences stripped.
+It goes in at a low insertion order, so it lands before everything it grounds.
+
+
 ### Continuing a lorebook you already made
 
 A lorebook is never finished in one sitting — a new season airs, a spin-off starts,

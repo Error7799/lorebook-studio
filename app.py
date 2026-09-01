@@ -36,6 +36,7 @@ from core.classifier import classify_entity
 from core.aggregator import aggregate_entity_data
 from core.formatter import profile_to_entry, profiles_to_lorebook
 from core import lorebook as LB
+from core import health as HEALTH
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
@@ -819,6 +820,7 @@ def api_wikipedia_bulk():
         return jsonify({"error": str(exc), "log": log}), 400
 
     store = _store()
+
     added = updated = 0
     for profile in profiles:
         profile["category"] = _classify_wikipedia(profile)
@@ -1004,6 +1006,21 @@ def api_fandom_bulk():
         return jsonify({"error": str(exc), "log": log}), 400
 
     store = _store()
+    # A primer is written once for the story a batch came from, and only if
+    # the book has not already got one. It has to be settled before the
+    # storing loop, or it is built and then thrown away.
+    if body.get("primer") and group and not any(
+            p.get("always_on") for p in store["profiles"]):
+        roster = [p.get("name") for p in profiles[:14]]
+        try:
+            primer = fandom.build_primer(
+                {"api": api, "site": site}, {"name": wiki_name or ""},
+                group, roster, log)
+        except FandomError:
+            primer = None
+        if primer:
+            profiles.insert(0, primer)
+
     added = updated = 0
     for profile in profiles:
         # Everything pulled from one film/episode shares a group, so the
@@ -1224,6 +1241,33 @@ def api_maker_entries():
         "total_chars":   chars,
         "approx_tokens": chars // 4,
     })
+
+
+@app.route("/api/maker/health", methods=["POST"])
+def api_health():
+    """
+    Whether the book as it stands would work once it is loaded.
+
+    A lorebook fails quietly — entries that never fire, entries that all fire
+    at once, a book bigger than the budget it has to fit in — and none of it
+    shows until you are mid-roleplay. Rendering every entry to check is cheap
+    at these counts.
+    """
+    body = request.json or {}
+    try:
+        context = int(body.get("context") or 8192)
+    except (TypeError, ValueError):
+        context = 8192
+
+    store = _store()
+    built = []
+    for profile in store["profiles"]:
+        try:
+            built.append(profile_to_entry(profile))
+        except Exception:
+            pass
+    built += list(store["existing"])
+    return jsonify(HEALTH.inspect(built, context_tokens=context))
 
 
 @app.route("/api/maker/entries/<entry_id>", methods=["DELETE"])

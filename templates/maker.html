@@ -281,7 +281,7 @@
       text-transform: uppercase; color: var(--muted);
     }
     .rail input[type=search], .rail input[type=text] { margin-bottom: 0; }
-    .rail .entries-wrap { flex: 1; overflow-y: auto; min-height: 120px; }
+    .rail .entries-wrap { flex: 1; overflow-y: auto; min-height: 180px; }
     .rail-fold > summary {
       cursor: pointer; list-style: none;
       font-size: .74rem; font-weight: 600; color: var(--text-dim);
@@ -292,6 +292,55 @@
     .rail-fold[open] > summary::before { content: "– "; }
     .rail-fold > summary:hover { color: var(--accent); }
     .rail-fold label { margin-top: .45rem; }
+    /* ── Fit check ───────────────────────────────────────────────────
+       A lorebook fails quietly: entries that never fire, entries that all
+       fire at once, a book bigger than the budget it has to fit in. None
+       of it shows until you are mid-roleplay, so it is shown here. */
+    .check { display: none; flex-direction: column; gap: .45rem;
+      border-top: 1px solid var(--border-soft); padding-top: .6rem; }
+    .check.show { display: flex; }
+    .check-bar {
+      height: 6px; border-radius: 3px; overflow: hidden;
+      background: rgba(0,0,0,.4);
+    }
+    .check-bar > i { display: block; height: 100%; border-radius: 3px;
+      background: linear-gradient(90deg, var(--accent2), var(--accent));
+      transition: width .3s; }
+    .check-bar.over > i { background: linear-gradient(90deg, #c2410c, var(--red)); }
+    .check-line {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: .5rem; font-size: .74rem; color: var(--muted);
+    }
+    .check-line b { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+    .check-ctx {
+      background: none; border: 0; color: var(--accent); cursor: pointer;
+      font: inherit; padding: 0; border-bottom: 1px dotted var(--accent-line);
+    }
+    .issue { display: flex; gap: .45rem; font-size: .74rem; line-height: 1.45; }
+    .issue > .dot { flex-shrink: 0; margin-top: .34rem;
+      width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+    .issue.error > .dot { background: var(--red); }
+    .issue.warn  > .dot { background: var(--amber); }
+    .issue.note  > .dot { background: var(--blue); }
+    .issue b { color: var(--text-dim); font-weight: 600; }
+    .issue .why { color: var(--muted); display: block; }
+    .issue .who { color: var(--muted); display: block; opacity: .8;
+      font-size: .69rem; margin-top: .12rem; }
+    .check-ok { font-size: .74rem; color: var(--green); }
+    .check-more > summary {
+      cursor: pointer; list-style: none; font-size: .74rem;
+      color: var(--text-dim); display: flex; align-items: center; gap: .4rem;
+      padding: .15rem 0;
+    }
+    .check-more > summary::-webkit-details-marker { display: none; }
+    .check-more > summary:hover { color: var(--accent); }
+    .check-more > summary .dot { width: 6px; height: 6px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0; }
+    .check-more > summary .dot.error { background: var(--red); }
+    .check-more > summary .dot.warn { background: var(--amber); }
+    .check-more > summary .dot.note { background: var(--blue); }
+    .check-more .issue { margin-top: .4rem; }
+    .check-more .who { max-height: 4.2rem; overflow: hidden; }
     .rail-actions {
       display: flex; flex-direction: column; gap: .4rem;
       border-top: 1px solid var(--border-soft); padding-top: .6rem;
@@ -1390,7 +1439,12 @@
           <input type="checkbox" id="browse-subpages" checked>
           <span>+ Synopsis tabs</span>
         </label>
-        <label class="minor-toggle" id="browse-relations-wrap"
+        <label class="minor-toggle" id="browse-primer-wrap"
+             title="A short always-on entry naming the world, so the model has ground to stand on before any keyword matches.">
+        <input type="checkbox" id="browse-primer" checked>
+        <span>+ World primer</span>
+      </label>
+      <label class="minor-toggle" id="browse-relations-wrap"
                title="A character's Relationships tab becomes its own entry, firing on the other person's name too — instead of a dozen short sections squeezed into the character entry.">
           <input type="checkbox" id="browse-relations" checked>
           <span>+ Relationship entries</span>
@@ -1421,6 +1475,8 @@
     <div class="entries-wrap" id="entries-wrap">
       <div class="empty"><p>Nothing collected yet.</p></div>
     </div>
+
+    <div class="check" id="check"></div>
 
     <details class="rail-fold">
       <summary>Continue a lorebook</summary>
@@ -1762,6 +1818,7 @@ function openBrowse(data) {
   renderScopeNote(scope, list);
   document.getElementById('browse-subpages-wrap').hidden = browseSource() !== 'fandom';
   document.getElementById('browse-relations-wrap').hidden = browseSource() !== 'fandom';
+  document.getElementById('browse-primer-wrap').hidden = browseSource() !== 'fandom';
   document.getElementById('core-btn').hidden = !scope;
   document.getElementById('minor-label').textContent = scope
     ? 'Include things that appear in only one chapter or episode'
@@ -2542,6 +2599,7 @@ async function importSelected() {
           wiki_name: browseData.wiki_name, titles: chunks[i], detail,
           subpages: document.getElementById('browse-subpages').checked,
           relations: document.getElementById('browse-relations').checked,
+          primer: document.getElementById('browse-primer').checked,
           arcs: chosenArcs(),
           tiers: tiersFor(chunks[i]),
           group: browseData.source_page || '',
@@ -2685,6 +2743,7 @@ function renderEntries() {
 
   document.getElementById('stage-empty')
           .classList.toggle('slim', entries.length > 0);
+  runCheck();
   if (!entries.length) {
     wrap.innerHTML = `<div class="empty">
       <p>Nothing collected yet.</p>
@@ -2743,6 +2802,72 @@ function renderEntries() {
 async function deleteEntry(id) {
   await fetch(`/api/maker/entries/${encodeURIComponent(id)}`, { method:'DELETE' });
   await loadEntries();
+}
+
+/* ── Fit check ───────────────────────────────────────────────────────
+   Everything else in the Maker is about getting the world out of a wiki.
+   This is about whether what came out will work once it is loaded: a book
+   that overruns its budget loses entries silently, a key shared by two
+   entries pays for both, and an entry with no keys can never fire at all. */
+const CONTEXTS = [4096, 8192, 16384, 32768, 65536, 131072];
+let checkContext = Number(localStorage.getItem('lb-context')) || 8192;
+
+function contextLabel(n) {
+  return n >= 1024 ? `${Math.round(n / 1024)}k` : String(n);
+}
+
+function cycleContext() {
+  const i = CONTEXTS.indexOf(checkContext);
+  checkContext = CONTEXTS[(i + 1) % CONTEXTS.length];
+  localStorage.setItem('lb-context', checkContext);
+  runCheck();
+}
+
+async function runCheck() {
+  const box = document.getElementById('check');
+  if (!entries.length) { box.classList.remove('show'); return; }
+  let data;
+  try {
+    const res = await fetch('/api/maker/health', {
+      method: 'POST', headers: json(),
+      body: JSON.stringify({ context: checkContext }),
+    });
+    data = await res.json();
+  } catch (e) { return; }
+  if (!data || data.tokens === undefined) return;
+
+  const pct = Math.min(100, Math.round(data.tokens / data.allowance * 100));
+  const over = data.tokens > data.allowance;
+  const issues = (data.issues || []).map(i => `
+    <div class="issue ${i.level}">
+      <span class="dot"></span>
+      <span><b>${esc(i.title)}</b>
+        <span class="why">${esc(i.detail)}</span>
+        ${i.entries.length
+          ? `<span class="who">${i.entries.map(esc).join(' · ')}</span>` : ''}
+      </span>
+    </div>`).join('');
+
+  // The bar and one line are always visible; the reasoning is a click away,
+  // because the rail belongs to the entries, not to the diagnostics.
+  const n = (data.issues || []).length;
+  const worst = (data.issues || [])[0];
+  box.innerHTML = `
+    <div class="check-line">
+      <span>Fits a
+        <button class="check-ctx" onclick="cycleContext()"
+                title="Click to try another context size">${contextLabel(checkContext)}</button>
+        context?</span>
+      <b>${data.tokens.toLocaleString()} / ${data.allowance.toLocaleString()}</b>
+    </div>
+    <div class="check-bar ${over ? 'over' : ''}"><i style="width:${pct}%"></i></div>
+    ${n ? `<details class="check-more" ${worst.level === 'error' ? 'open' : ''}>
+             <summary><span class="dot ${worst.level}"></span>
+               ${n} thing${n === 1 ? '' : 's'} to look at</summary>
+             ${issues}
+           </details>`
+        : '<div class="check-ok">Nothing to flag.</div>'}`;
+  box.classList.add('show');
 }
 
 /* ── Export ────────────────────────────────────────────────────── */
