@@ -1385,4 +1385,8 @@ def api_clear():
 if __name__ == "__main__":
     debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
     print(f" * Lorebook Studio: http://{HOST}:{PORT}")
-    app.run(debug=debug, host=HOST, port=PORT)
+    # Threaded: the picker asks for a screenful of thumbnails at once, and a
+    # single-threaded server serves them one after another while the page sits
+    # there showing initials. Each one is a short outbound fetch, so they
+    # should overlap.
+    app.run(debug=debug, host=HOST, port=PORT, threaded=True)

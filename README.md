@@ -35,7 +35,25 @@ Then open <http://127.0.0.1:5000>. Set `PORT` / `HOST` env vars to change the bi
 
 ## ⚒ Maker
 
-The Maker has two sources, switched with the chips at the top of the panel.
+The page is one workspace: a slim bar to say where to look, the pictures filling
+everything, and what you have collected kept to one side.
+
+```
+┌─────────────────────────────────────────────┬────────────┐
+│ [Wikipedia|Fandom]  paste a link…   [Open] [⚙] │  LOREBOOK   │
+├─────────────────────────────────────────────┤  □ Elsa     │
+│  □ □ □ □ □   ← whatever you are picking from  │  □ Anna     │
+│  □ □ □ □ □                                     │  □ Olaf     │
+└─────────────────────────────────────────────┴────────────┘
+```
+
+The picker used to be a modal on top of a page of forms, which put the one
+genuinely visual thing behind a click and gave the top half of the screen to
+explanatory prose. Now the posters and portraits *are* the page; the settings
+that used to fill a column live behind the ⚙, and the export controls sit under
+the entry list where they are needed rather than above it.
+
+The two sources are switched with the chips at the left of the bar.
 
 ### 🌐 Wikipedia — real people, brands and places
 

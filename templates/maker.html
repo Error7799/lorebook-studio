@@ -74,18 +74,17 @@
 
     /* ── Header ──────────────────────────────────────────────── */
     header {
-      background: rgba(21,20,29,.82);
-      backdrop-filter: blur(14px) saturate(1.3);
-      -webkit-backdrop-filter: blur(14px) saturate(1.3);
-      border-bottom: 1px solid var(--border-soft);
-      padding: 12px 22px;
       display: flex;
       align-items: center;
-      gap: 18px;
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      gap: 1.1rem;
+      padding: .62rem 1.15rem;
+      border-bottom: 1px solid var(--border-soft);
+      background: rgba(20,16,14,.72);
+      backdrop-filter: blur(10px);
+      position: sticky; top: 0; z-index: 50;
     }
+    .head-note { margin-left: auto; font-size: .74rem; color: var(--muted); }
+    @media (max-width: 700px) { .head-note { display: none; } }
     header h1 {
       font-size: 16px;
       margin: 0;
@@ -146,18 +145,159 @@
     }
 
     /* ── Layout ──────────────────────────────────────────────── */
-    main {
+    /* ── Workspace ────────────────────────────────────────────────
+       The picker used to live in a modal on top of a page of forms,
+       which put the one genuinely visual thing behind a click. It is
+       the page now: a slim bar to say where to look, the tiles filling
+       everything, and what you have collected kept to one side. */
+    main.workspace {
       flex: 1;
       display: grid;
-      grid-template-columns: 390px 1fr;
-      gap: 1.15rem;
-      padding: 1.15rem;
-      max-width: 1560px;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 1rem;
+      padding: 1rem 1.15rem 1.4rem;
+      max-width: 1680px;
       width: 100%;
       margin: 0 auto;
       align-items: start;
+      min-height: 0;
     }
-    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+    @media (max-width: 1080px) {
+      main.workspace { grid-template-columns: 1fr; }
+      .rail { order: 2; }
+    }
+
+    .stage {
+      display: flex;
+      flex-direction: column;
+      gap: .8rem;
+      min-width: 0;
+    }
+
+    /* One line: where to look, and what to look at. */
+    .stage-bar {
+      display: flex;
+      align-items: center;
+      gap: .55rem;
+      padding: .5rem .55rem;
+      background: var(--panel);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-sm);
+    }
+    .stage-field { flex: 1; min-width: 0; position: relative; }
+    .stage-field input { margin-bottom: 0; }
+    .stage-bar .source-switch { margin: 0; flex-shrink: 0; }
+    .stage-bar .btn-primary { width: auto; padding: .52rem 1.15rem; flex-shrink: 0; }
+
+    /* Everything that is a preference rather than a destination. */
+    .opts { position: relative; flex-shrink: 0; }
+    .opts > summary {
+      list-style: none; cursor: pointer;
+      width: 34px; height: 34px; border-radius: 9px;
+      display: grid; place-items: center;
+      color: var(--muted); font-size: 1rem;
+      border: 1px solid var(--border-soft);
+      background: var(--panel2);
+    }
+    .opts > summary::-webkit-details-marker { display: none; }
+    .opts > summary:hover { color: var(--accent); border-color: var(--accent-line); }
+    .opts[open] > summary { color: var(--accent); border-color: var(--accent-line); }
+    .opts-body {
+      position: absolute; right: 0; top: calc(100% + .5rem); z-index: 40;
+      width: 320px; padding: .9rem;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+    }
+    .opts-body label { margin-top: .5rem; }
+    .opts-body label:first-child { margin-top: 0; }
+    .opts-body textarea { min-height: 62px; margin-bottom: .3rem; }
+    .opts-note { font-size: .72rem; color: var(--muted); line-height: 1.5; }
+
+    /* The stage body holds either the invitation or the picker. */
+    .stage-body { position: relative; min-height: 0; }
+    .stage-empty {
+      border: 1px dashed var(--border);
+      border-radius: var(--r-lg);
+      padding: 4.5rem 2rem;
+      text-align: center;
+      color: var(--muted);
+      background:
+        radial-gradient(520px 260px at 50% 0%, var(--accent-wash), transparent 70%);
+    }
+    .stage-emo { font-size: 2rem; color: var(--accent2); opacity: .5; margin-bottom: .6rem; }
+    /* Once there is something in the book, the invitation has done its job and
+       should stop taking up the room the work needs. */
+    .stage-empty.slim { padding: 1.4rem; background: none; }
+    .stage-empty.slim .stage-emo,
+    .stage-empty.slim .stage-sub { display: none; }
+    .stage-empty p { margin: 0 0 .4rem; color: var(--text-dim); }
+    .stage-sub { max-width: 46ch; margin: 0 auto !important; font-size: .82rem; line-height: 1.65; }
+
+    /* The picker, in the page rather than over it. */
+    .stage-panel { display: none; }
+    .stage-panel.open { display: block; }
+    .stage-inner {
+      display: flex;
+      flex-direction: column;
+      gap: .7rem;
+      background: var(--panel);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--r-lg);
+      padding: .9rem;
+      box-shadow: var(--shadow-sm);
+    }
+    .stage-inner .modal-hd {
+      padding: 0 0 .2rem;
+      border-bottom: 0;
+    }
+    .stage-inner .browse-list { max-height: 58vh; }
+    .stage-inner .works-grid { max-height: 60vh; }
+    /* The panel can grow past the fold; the thing you came to press should
+       not go with it. */
+    .stage-inner .browse-foot {
+      position: sticky; bottom: -.9rem; z-index: 5;
+      margin: 0 -.9rem -.9rem; padding: .7rem .9rem;
+      background: linear-gradient(to top, var(--panel) 72%, transparent);
+      border-bottom-left-radius: var(--r-lg);
+      border-bottom-right-radius: var(--r-lg);
+    }
+
+    /* ── Rail ─────────────────────────────────────────────────────── */
+    .rail {
+      position: sticky; top: 1rem;
+      display: flex; flex-direction: column; gap: .55rem;
+      max-height: calc(100vh - 2rem);
+      background: var(--panel);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--r-lg);
+      padding: .85rem;
+      box-shadow: var(--shadow-sm);
+      min-height: 0;
+    }
+    .rail-head {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: .72rem; font-weight: 700; letter-spacing: .09em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .rail input[type=search], .rail input[type=text] { margin-bottom: 0; }
+    .rail .entries-wrap { flex: 1; overflow-y: auto; min-height: 120px; }
+    .rail-fold > summary {
+      cursor: pointer; list-style: none;
+      font-size: .74rem; font-weight: 600; color: var(--text-dim);
+      padding: .4rem 0; border-top: 1px solid var(--border-soft);
+    }
+    .rail-fold > summary::-webkit-details-marker { display: none; }
+    .rail-fold > summary::before { content: "+ "; color: var(--muted); }
+    .rail-fold[open] > summary::before { content: "– "; }
+    .rail-fold > summary:hover { color: var(--accent); }
+    .rail-fold label { margin-top: .45rem; }
+    .rail-actions {
+      display: flex; flex-direction: column; gap: .4rem;
+      border-top: 1px solid var(--border-soft); padding-top: .6rem;
+    }
+    .rail-minor { display: flex; gap: .35rem; }
+    .rail-minor .btn { flex: 1; }
 
     /* ── Panel ───────────────────────────────────────────────── */
     .panel {
@@ -242,7 +382,7 @@
       font-family: inherit;
       letter-spacing: .005em;
     }
-    .btn:disabled { opacity: .42; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+    .btn:disabled { opacity: .28; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
     .btn:active:not(:disabled) { transform: translateY(0) scale(.99); }
 
     .btn-primary {
@@ -255,15 +395,18 @@
       transform: translateY(-1px);
       box-shadow: 0 8px 26px rgba(242,116,58,.45), inset 0 1px 0 rgba(255,255,255,.22);
     }
+    /* One saturated colour on the page, and it belongs to the accent. A green
+       download button beside a coral one reads as two different apps. */
     .btn-export {
-      background: linear-gradient(180deg, #17a56a, var(--green-deep));
-      color: #eafff4;
-      box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.16);
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent-line);
     }
     .btn-export:hover:not(:disabled) {
-      background: linear-gradient(180deg, #1cba79, #149463);
+      background: var(--accent-wash);
+      border-color: var(--accent);
       transform: translateY(-1px);
-      box-shadow: 0 8px 26px rgba(61,220,154,.32), inset 0 1px 0 rgba(255,255,255,.2);
+      box-shadow: none;
     }
     .btn-ghost { background: rgba(255,255,255,.025); border-color: var(--border); color: var(--text-dim); }
     .btn-ghost:hover:not(:disabled) {
@@ -1069,193 +1212,252 @@
 
 <!-- ═══════════════════════════ HEADER ═══════════════════════════════════ -->
 <header>
-  <div>
-    <h1><span class="logo-mark">✦</span> Lorebook Studio</h1>
-    <div class="sub">Wikipedia · Wikidata · Fandom · Social — no AI APIs</div>
-  </div>
+  <h1><span class="logo-mark">✦</span> Lorebook Studio</h1>
   <nav class="nav">
-    <a href="/maker" class="active">⚒ Maker</a>
-    <a href="/editor">✎ Editor</a>
+    <a href="/maker" class="active">Maker</a>
+    <a href="/editor">Editor</a>
   </nav>
-  <div class="entry-badge" id="count-badge">0 entries</div>
+  <span class="head-note">no AI APIs — read straight from the wikis</span>
 </header>
 
 <!-- ═══════════════════════════ MAIN ═════════════════════════════════════ -->
-<main>
+<main class="workspace">
 
-  <!-- ── LEFT: Build Panel ─────────────────────────────────────────────── -->
-  <div class="panel" id="build-panel">
-    <div class="panel-head">Add Entity</div>
+  <!-- ── The stage: whatever you are picking from is the page ─────────── -->
+  <section class="stage">
 
-    <div class="source-switch" id="source-switch">
-      <button class="chip active" id="src-btn-wikipedia" onclick="setSource('wikipedia')">🌐 Wikipedia</button>
-      <button class="chip" id="src-btn-fandom" onclick="setSource('fandom')">📚 Fandom Wiki</button>
+    <div class="stage-bar">
+      <div class="source-switch" id="source-switch">
+        <button class="chip active" id="src-btn-wikipedia" onclick="setSource('wikipedia')">Wikipedia</button>
+        <button class="chip" id="src-btn-fandom" onclick="setSource('fandom')">Fandom</button>
+      </div>
+
+      <div class="stage-field" id="src-wikipedia">
+        <div class="search-wrap">
+          <input type="text" id="name-in" autocomplete="off"
+                 placeholder="A name, or a wikipedia.org link…">
+          <div class="autocomplete" id="ac-box"></div>
+        </div>
+        <input type="hidden" id="wiki-title-in">
+      </div>
+
+      <div class="stage-field" id="src-fandom" hidden>
+        <input type="text" id="fandom-url" autocomplete="off"
+               placeholder="A Fandom link — a wiki, a story, or one page…">
+      </div>
+
+      <button class="btn btn-primary" id="build-btn" onclick="buildEntry()">
+        <span class="spin" id="build-spin"></span>
+        <span id="build-lbl">Open</span>
+      </button>
+
+      <details class="opts" id="opts">
+        <summary title="Options">⚙</summary>
+        <div class="opts-body">
+          <div class="opts-col" id="opts-wikipedia">
+            <label for="cat-in">Category</label>
+            <select id="cat-in">
+              <option value="">Auto-detect from Wikipedia</option>
+              <option value="Musician">Musician</option>
+              <option value="Actor">Actor / Actress</option>
+              <option value="Athlete">Athlete</option>
+              <option value="Influencer">Influencer / Content Creator</option>
+              <option value="Brand">Brand / Company</option>
+              <option value="Politician">Politician</option>
+              <option value="Character">Fictional Character</option>
+              <option value="Scientist">Scientist / Engineer</option>
+              <option value="Writer">Writer / Author</option>
+              <option value="Comedian">Comedian</option>
+              <option value="Model">Model</option>
+              <option value="Gamer">Gamer / Esports</option>
+              <option value="Location">Location / Place</option>
+              <option value="Media">Media (Show / Game / Series)</option>
+              <option value="Person">Person (General)</option>
+            </select>
+            <label for="wp-detail-in">Detail per entry</label>
+            <select id="wp-detail-in">
+              <option value="compact">Compact</option>
+              <option value="standard" selected>Standard</option>
+              <option value="detailed">Detailed</option>
+            </select>
+            <label class="minor-toggle">
+              <input type="checkbox" id="wp-social-in" checked>
+              <span>Fetch live follower counts</span>
+            </label>
+          </div>
+
+          <div class="opts-col" id="opts-fandom" hidden>
+            <label for="detail-in">Detail per entry</label>
+            <select id="detail-in">
+              <option value="compact">Compact — headline facts only</option>
+              <option value="standard" selected>Standard — facts + main sections</option>
+              <option value="detailed">Detailed — every arc a paragraph</option>
+            </select>
+            <label class="minor-toggle">
+              <input type="checkbox" id="subpages-in" checked>
+              <span>Include the Synopsis tab</span>
+            </label>
+          </div>
+
+          <label for="notes-in">Extra notes</label>
+          <textarea id="notes-in" placeholder="Lore or context to add to each entry…"></textarea>
+          <p class="opts-note">Images, references, trivia, cast, merchandise and
+             release data are always stripped out.</p>
+        </div>
+      </details>
     </div>
 
-    <!-- ── Wikipedia source ──────────────────────────────────────────── -->
-    <div id="src-wikipedia">
-      <label for="name-in">Name or Wikipedia link</label>
-      <div class="search-wrap">
-        <input type="text" id="name-in" placeholder="Ice Spice, Nike… or paste a wikipedia.org link" autocomplete="off">
-        <div class="autocomplete" id="ac-box"></div>
+    <div class="stage-body">
+      <div class="stage-empty" id="stage-empty">
+        <div class="stage-emo">▦</div>
+        <p><b>Paste a wiki link to begin.</b></p>
+        <p class="stage-sub">A wiki’s front page asks which story it is about.
+           A film, season or spin-off opens holding only that story’s cast,
+           places and events. One page becomes one entry.</p>
       </div>
-      <input type="hidden" id="wiki-title-in">
-      <div class="hint" style="margin:.55rem 0 .9rem">
-        <strong style="color:var(--text-dim)">A name</strong> searches Wikipedia and adds one entry.<br>
-        <strong style="color:var(--text-dim)">A list page</strong>
-        (<code>…/wiki/List_of_hip-hop_musicians</code>) opens a picker — tick the
-        people you want and each is scraped from <em>their own</em> article.
+  <div class="stage-panel" id="browse-overlay">
+    <div class="stage-inner">
+      <div class="modal-hd">
+        <span class="modal-title" id="browse-title">Browse Wiki</span>
+        <button class="modal-close" onclick="closeBrowse()">✕</button>
       </div>
-
-      <label for="cat-in">Category</label>
-      <select id="cat-in">
-        <option value="">Auto-detect from Wikipedia</option>
-        <option value="Musician">Musician</option>
-        <option value="Actor">Actor / Actress</option>
-        <option value="Athlete">Athlete</option>
-        <option value="Influencer">Influencer / Content Creator</option>
-        <option value="Brand">Brand / Company</option>
-        <option value="Politician">Politician</option>
-        <option value="Character">Fictional Character</option>
-        <option value="Scientist">Scientist / Engineer</option>
-        <option value="Writer">Writer / Author</option>
-        <option value="Comedian">Comedian</option>
-        <option value="Model">Model</option>
-        <option value="Gamer">Gamer / Esports</option>
-        <option value="Location">Location / Place</option>
-        <option value="Media">Media (Show / Game / Series)</option>
-        <option value="Person">Person (General)</option>
-      </select>
-
-      <label for="wp-detail-in">Detail per Entry</label>
-      <select id="wp-detail-in">
-        <option value="compact">Compact — headline facts only</option>
-        <option value="standard" selected>Standard — facts + main sections</option>
-        <option value="detailed">Detailed — long entries, fewer fit the budget</option>
-      </select>
-      <label class="minor-toggle" style="margin:-.35rem 0 .9rem">
-        <input type="checkbox" id="wp-social-in" checked>
-        <span>Fetch live follower counts (slower — one page fetch per platform)</span>
+  
+      <!-- Step 1 — which story? A franchise wiki holds ten of them, and
+           "characters" is the wrong first question until you have said
+           characters from *what*. -->
+      <div class="works-step" id="works-step" hidden>
+        <div class="works-head">
+          <div>
+            <div class="works-title">What is this lorebook about?</div>
+            <div class="works-sub" id="works-sub"></div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="chooseWholeWiki()">
+            Everything on this wiki →</button>
+        </div>
+        <input type="search" id="works-search"
+               placeholder="Find a story by name… (press Enter to search the whole wiki)">
+        <div class="browse-cats" id="works-kinds"></div>
+        <div class="works-note" id="works-note" hidden></div>
+        <div class="works-grid" id="works-grid"></div>
+      </div>
+  
+      <div class="step-back" id="step-back" hidden>
+        <button class="btn btn-ghost btn-sm" onclick="backToWorks()">← Pick a different story</button>
+      </div>
+  
+      <div class="scope-note" id="scope-note" hidden></div>
+  
+      <div class="browse-bar" id="browse-bar">
+        <input type="search" id="browse-search" placeholder="Filter the pages below… (press Enter to search the whole wiki)">
+        <div class="view-toggle" title="Tiles show each page's picture from the wiki">
+          <button data-view="tiles" class="on" onclick="setTileView(true)">▦ Tiles</button>
+          <button data-view="rows" onclick="setTileView(false)">≡ List</button>
+        </div>
+      </div>
+      <div class="browse-cats" id="browse-cats"></div>
+      <div class="browse-cats browse-subs" id="browse-subs"></div>
+      <div class="browse-list" id="browse-list"></div>
+      <div class="progress" id="browse-progress"><div></div></div>
+  
+      <label class="minor-toggle" id="minor-wrap" hidden>
+        <input type="checkbox" id="minor-in" onchange="renderBrowseList()">
+        <span id="minor-label">Include things only mentioned, in the background, or in deleted scenes</span>
       </label>
-      <div class="hint">
-        Discography, filmography, awards, video games, notes, references and
-        external links are always stripped out.
+  
+      <div class="arc-panel" id="arc-panel">
+        <div class="arc-head">
+          <span>📖 <b id="arc-count">Story arcs</b> in the selected pages'
+                Synopsis tabs — untick the parts this lorebook is not about, and
+                the rest get the room instead.</span>
+          <span class="arc-actions">
+            <button class="btn btn-ghost btn-sm" onclick="setAllArcs(true)">All</button>
+            <button class="btn btn-ghost btn-sm" onclick="setAllArcs(false)">None</button>
+          </span>
+        </div>
+        <div class="arc-chips" id="arc-chips"></div>
+      </div>
+  
+      <div class="browse-foot" id="browse-foot">
+        <button class="btn btn-ghost btn-sm" onclick="selectShown(true)">Select all shown</button>
+        <button class="btn btn-ghost btn-sm" id="core-btn" onclick="selectCore()" hidden>Select main cast</button>
+        <button class="btn btn-ghost btn-sm" onclick="selectShown(false)">Clear</button>
+        <select id="browse-detail">
+          <option value="compact">Compact</option>
+          <option value="standard" selected>Standard</option>
+          <option value="detailed">Detailed</option>
+        </select>
+        <label class="minor-toggle" id="browse-subpages-wrap">
+          <input type="checkbox" id="browse-subpages" checked>
+          <span>+ Synopsis tabs</span>
+        </label>
+        <label class="minor-toggle" id="browse-relations-wrap"
+               title="A character's Relationships tab becomes its own entry, firing on the other person's name too — instead of a dozen short sections squeezed into the character entry.">
+          <input type="checkbox" id="browse-relations" checked>
+          <span>+ Relationship entries</span>
+        </label>
+        <span class="sel-count" id="sel-count">0 selected</span>
+        <button class="btn btn-primary btn-sm" id="import-btn" onclick="importSelected()" disabled>
+          <span class="spin" id="import-spin"></span>
+          <span id="import-lbl">Import selected</span>
+        </button>
       </div>
     </div>
+  </div>
 
-    <!-- ── Fandom source ─────────────────────────────────────────────── -->
-    <div id="src-fandom" hidden>
-      <label for="fandom-url">Fandom Page or Wiki URL</label>
-      <input type="text" id="fandom-url" autocomplete="off"
-             placeholder="https://jujutsu-kaisen.fandom.com/wiki/Kinji_Hakari">
-      <div class="hint">
-        <strong style="color:var(--text-dim)">One page</strong> — a character, location, arc
-        or term — becomes one entry.<br>
-        <strong style="color:var(--text-dim)">A wiki's front page</strong>
-        (<code>…/wiki/Jujutsu_Kaisen_Wiki</code>) opens a browser for picking in bulk.<br>
-        <strong style="color:var(--text-dim)">One story</strong> — a film, season, or a
-        sequel like <code>…/wiki/Jujutsu_Kaisen_Modulo</code> — opens a picker holding
-        <em>only that story's</em> cast, places and events, even when the wiki files them
-        together with the rest of the franchise.
-      </div>
+      <div class="log" id="log-box"></div>
+    </div>
+  </section>
 
-      <label for="detail-in">Detail per Entry</label>
-      <select id="detail-in">
-        <option value="compact">Compact — headline facts only</option>
-        <option value="standard" selected>Standard — facts + main sections</option>
-        <option value="detailed">Detailed — long entries, fewer fit the budget</option>
-      </select>
-      <label class="minor-toggle" style="margin:-.35rem 0 .9rem">
-        <input type="checkbox" id="subpages-in" checked>
-        <span>Include the <strong style="color:var(--text-dim)">Synopsis</strong> tab
-              — a character's story, often the larger half of their article</span>
-      </label>
-      <div class="hint">
-        Images, references, trivia, cast &amp; voice actors, merchandise and
-        release data are always stripped out.
-      </div>
+  <!-- ── The rail: what you have collected so far ─────────────────────── -->
+  <aside class="rail">
+    <div class="rail-head">
+      <span>Lorebook</span>
+      <span class="entry-badge" id="count-badge">0 entries</span>
     </div>
 
-    <label for="notes-in">Extra Notes <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
-    <textarea id="notes-in" placeholder="Additional lore, traits, backstory context…"></textarea>
+    <input type="search" id="entry-search" placeholder="Filter entries…">
+    <div class="chips" id="cat-chips"></div>
 
-    <button class="btn btn-primary" id="build-btn" onclick="buildEntry()">
-      <span class="spin" id="build-spin"></span>
-      <span id="build-lbl">Scrape &amp; Build Entry</span>
-    </button>
+    <div class="entries-wrap" id="entries-wrap">
+      <div class="empty"><p>Nothing collected yet.</p></div>
+    </div>
 
-    <!-- Progress log -->
-    <div class="log" id="log-box"></div>
-
-    <!-- ── Continue an existing lorebook ───────────────────────────────── -->
-    <div class="export-section">
-      <div class="panel-head">Continue a Lorebook</div>
-
+    <details class="rail-fold">
+      <summary>Continue a lorebook</summary>
       <div class="loaded-book" id="loaded-book" hidden>
-        <span>📖</span>
         <span class="lb-name" id="loaded-name"></span>
         <span class="lb-meta" id="loaded-meta"></span>
         <button title="Unload this lorebook" onclick="unloadBook()">✕</button>
       </div>
-
       <div class="dropzone" id="dropzone" onclick="document.getElementById('lb-file').click()">
         <b>Drop a lorebook here</b> or click to choose<br>
         New entries are added onto it, and every original field is kept.
       </div>
       <input type="file" id="lb-file" accept=".json,application/json" hidden
              onchange="loadBookFile(this.files[0])">
-      <div style="height:.7rem"></div>
-      <input type="text" id="lb-path" placeholder="…or paste a full path to a .json lorebook"
+      <input type="text" id="lb-path" placeholder="…or paste a path to a .json lorebook"
              onkeydown="if(event.key==='Enter')loadBookPath()">
-      <div class="hint" style="margin-top:-.55rem">
-        Re-scraping a page the book already has <strong style="color:var(--text-dim)">refreshes</strong>
-        it — the text updates, while its strategy, order, depth and group stay as you set them.
-      </div>
-    </div>
+    </details>
 
-    <!-- ── Export section ──────────────────────────────────────────────── -->
-    <div class="export-section">
-      <div class="panel-head">Export Lorebook</div>
-
-      <label for="lb-name">Lorebook Name</label>
+    <details class="rail-fold">
+      <summary>Name &amp; description</summary>
+      <label for="lb-name">Lorebook name</label>
       <input type="text" id="lb-name" value="My World Lorebook">
-
-      <label for="lb-desc">Description <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+      <label for="lb-desc">Description</label>
       <input type="text" id="lb-desc" placeholder="Used in RP for modern-world roleplay…">
+    </details>
 
-      <button class="btn btn-primary" id="send-btn" onclick="sendToEditor()" disabled>
-        ✎ Open in Editor
-      </button>
-      <div style="height:.45rem"></div>
-      <button class="btn btn-export" id="export-btn" onclick="exportLorebook()" disabled>
-        ↓ Download SillyTavern JSON
-      </button>
-      <div style="height:.45rem"></div>
-      <button class="btn btn-ghost" onclick="openPreview()">Preview JSON</button>
-      <div style="height:.45rem"></div>
-      <button class="btn btn-danger" onclick="clearAll('scraped')" id="clear-scraped-btn" hidden>
-        Clear Scraped Entries Only
-      </button>
-      <div style="height:.45rem" id="clear-gap" hidden></div>
-      <button class="btn btn-danger" onclick="clearAll('all')">Clear All Entries</button>
-    </div>
-  </div>
-
-  <!-- ── RIGHT: Entries ────────────────────────────────────────────────── -->
-  <div class="panel">
-    <div class="panel-head">Lorebook Entries</div>
-    <div class="filter-bar">
-      <input type="search" id="entry-search" placeholder="Filter entries by name or description…">
-      <div class="chips" id="cat-chips"></div>
-    </div>
-    <div class="entries-wrap" id="entries-wrap">
-      <div class="empty">
-        <div class="emo">📭</div>
-        <p>No entries yet.<br>Search Wikipedia for a real person, brand or place —<br>
-           or paste a <strong>Fandom wiki</strong> link to build a fictional world.</p>
+    <div class="rail-actions">
+      <button class="btn btn-primary" id="send-btn" onclick="sendToEditor()" disabled>Open in Editor</button>
+      <button class="btn btn-export" id="export-btn" onclick="exportLorebook()" disabled>Download JSON</button>
+      <div class="rail-minor">
+        <button class="btn btn-ghost btn-sm" onclick="openPreview()">Preview</button>
+        <button class="btn btn-danger btn-sm" onclick="clearAll('scraped')" id="clear-scraped-btn" hidden>Clear scraped</button>
+        <span id="clear-gap" hidden></span>
+        <button class="btn btn-danger btn-sm" onclick="clearAll('all')">Clear all</button>
       </div>
     </div>
-  </div>
+  </aside>
 
 </main>
 
@@ -1271,96 +1473,6 @@
       <button class="btn btn-export btn-sm" onclick="exportLorebook();closeModal()">↓ Download</button>
       <button class="btn btn-ghost btn-sm" onclick="copyJSON()">Copy JSON</button>
       <button class="btn btn-ghost btn-sm" onclick="closeModal()">Close</button>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════════════════════ BROWSE MODAL ═════════════════════════════ -->
-<div class="overlay" id="browse-overlay" onclick="closeBrowseOnBg(event)">
-  <div class="modal modal-wide">
-    <div class="modal-hd">
-      <span class="modal-title" id="browse-title">Browse Wiki</span>
-      <button class="modal-close" onclick="closeBrowse()">✕</button>
-    </div>
-
-    <!-- Step 1 — which story? A franchise wiki holds ten of them, and
-         "characters" is the wrong first question until you have said
-         characters from *what*. -->
-    <div class="works-step" id="works-step" hidden>
-      <div class="works-head">
-        <div>
-          <div class="works-title">What is this lorebook about?</div>
-          <div class="works-sub" id="works-sub"></div>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="chooseWholeWiki()">
-          Everything on this wiki →</button>
-      </div>
-      <input type="search" id="works-search"
-             placeholder="Find a story by name… (press Enter to search the whole wiki)">
-      <div class="browse-cats" id="works-kinds"></div>
-      <div class="works-note" id="works-note" hidden></div>
-      <div class="works-grid" id="works-grid"></div>
-    </div>
-
-    <div class="step-back" id="step-back" hidden>
-      <button class="btn btn-ghost btn-sm" onclick="backToWorks()">← Pick a different story</button>
-    </div>
-
-    <div class="scope-note" id="scope-note" hidden></div>
-
-    <div class="browse-bar" id="browse-bar">
-      <input type="search" id="browse-search" placeholder="Filter the pages below… (press Enter to search the whole wiki)">
-      <div class="view-toggle" title="Tiles show each page's picture from the wiki">
-        <button data-view="tiles" class="on" onclick="setTileView(true)">▦ Tiles</button>
-        <button data-view="rows" onclick="setTileView(false)">≡ List</button>
-      </div>
-    </div>
-    <div class="browse-cats" id="browse-cats"></div>
-    <div class="browse-cats browse-subs" id="browse-subs"></div>
-    <div class="browse-list" id="browse-list"></div>
-    <div class="progress" id="browse-progress"><div></div></div>
-
-    <label class="minor-toggle" id="minor-wrap" hidden>
-      <input type="checkbox" id="minor-in" onchange="renderBrowseList()">
-      <span id="minor-label">Include things only mentioned, in the background, or in deleted scenes</span>
-    </label>
-
-    <div class="arc-panel" id="arc-panel">
-      <div class="arc-head">
-        <span>📖 <b id="arc-count">Story arcs</b> in the selected pages'
-              Synopsis tabs — untick the parts this lorebook is not about, and
-              the rest get the room instead.</span>
-        <span class="arc-actions">
-          <button class="btn btn-ghost btn-sm" onclick="setAllArcs(true)">All</button>
-          <button class="btn btn-ghost btn-sm" onclick="setAllArcs(false)">None</button>
-        </span>
-      </div>
-      <div class="arc-chips" id="arc-chips"></div>
-    </div>
-
-    <div class="browse-foot" id="browse-foot">
-      <button class="btn btn-ghost btn-sm" onclick="selectShown(true)">Select all shown</button>
-      <button class="btn btn-ghost btn-sm" id="core-btn" onclick="selectCore()" hidden>Select main cast</button>
-      <button class="btn btn-ghost btn-sm" onclick="selectShown(false)">Clear</button>
-      <select id="browse-detail">
-        <option value="compact">Compact</option>
-        <option value="standard" selected>Standard</option>
-        <option value="detailed">Detailed</option>
-      </select>
-      <label class="minor-toggle" id="browse-subpages-wrap">
-        <input type="checkbox" id="browse-subpages" checked>
-        <span>+ Synopsis tabs</span>
-      </label>
-      <label class="minor-toggle" id="browse-relations-wrap"
-             title="A character's Relationships tab becomes its own entry, firing on the other person's name too — instead of a dozen short sections squeezed into the character entry.">
-        <input type="checkbox" id="browse-relations" checked>
-        <span>+ Relationship entries</span>
-      </label>
-      <span class="sel-count" id="sel-count">0 selected</span>
-      <button class="btn btn-primary btn-sm" id="import-btn" onclick="importSelected()" disabled>
-        <span class="spin" id="import-spin"></span>
-        <span id="import-lbl">Import selected</span>
-      </button>
     </div>
   </div>
 </div>
@@ -1403,8 +1515,27 @@ function setSource(next) {
   document.getElementById('src-btn-fandom').classList.toggle('active', next === 'fandom');
   document.getElementById('src-wikipedia').hidden = next !== 'wikipedia';
   document.getElementById('src-fandom').hidden    = next !== 'fandom';
+  // The options popover holds both sources' preferences; only one applies.
+  document.getElementById('opts-wikipedia').hidden = next !== 'wikipedia';
+  document.getElementById('opts-fandom').hidden    = next !== 'fandom';
+  document.getElementById('build-lbl').textContent =
+    next === 'fandom' ? 'Open' : 'Add';
   acBox.classList.remove('open');
 }
+
+/* The stage shows the invitation until there is something to pick from. */
+function showStage(open) {
+  const box = document.getElementById('stage-empty');
+  box.hidden = open;
+  box.classList.toggle('slim', entries.length > 0);
+}
+
+/* A popover that stays open after you have clicked away is a panel, and the
+   point of putting the preferences behind one was to keep them out of sight. */
+document.addEventListener('click', event => {
+  const opts = document.getElementById('opts');
+  if (opts && opts.open && !opts.contains(event.target)) opts.open = false;
+});
 
 /* ── Autocomplete ──────────────────────────────────────────────── */
 const nameIn  = document.getElementById('name-in');
@@ -1554,7 +1685,8 @@ function setBusy(on) {
   const lbl  = document.getElementById('build-lbl');
   btn.disabled  = on;
   spin.style.display = on ? 'block' : 'none';
-  lbl.textContent    = on ? 'Scraping…' : 'Scrape & Build Entry';
+  lbl.textContent    = on ? 'Reading…'
+                     : (source === 'fandom' ? 'Open' : 'Add');
 }
 
 /* ── Fandom ────────────────────────────────────────────────────── */
@@ -1643,6 +1775,7 @@ function openBrowse(data) {
     document.getElementById('subpages-in').checked;
   document.getElementById('browse-subpages').onchange = refreshArcs;
   document.getElementById('browse-overlay').classList.add('open');
+  showStage(true);
 
   // A wiki that documents several stories asks which one first. One that
   // documents a single story has no question to ask, and jumping straight to
@@ -1905,8 +2038,10 @@ function selectCore() {
   toast(`Selected ${selectedPages.size} main entries`, 'ok');
 }
 
-function closeBrowse()      { document.getElementById('browse-overlay').classList.remove('open'); }
-function closeBrowseOnBg(e) { if (e.target.id === 'browse-overlay') closeBrowse(); }
+function closeBrowse() {
+  document.getElementById('browse-overlay').classList.remove('open');
+  showStage(false);
+}
 
 /* Chips are addressed by index — category names contain apostrophes and
    quotes ("Na'vi", 'Locations of "1984"') that would break inline handlers. */
@@ -2548,11 +2683,11 @@ function renderEntries() {
   const wrap = document.getElementById('entries-wrap');
   const rows = visibleEntries();
 
+  document.getElementById('stage-empty')
+          .classList.toggle('slim', entries.length > 0);
   if (!entries.length) {
     wrap.innerHTML = `<div class="empty">
-      <div class="emo">📭</div>
-      <p>No entries yet.<br>Search Wikipedia for a real person, brand or place —<br>
-         or paste a <strong>Fandom wiki</strong> link to build a fictional world.</p>
+      <p>Nothing collected yet.</p>
     </div>`;
     return;
   }
@@ -2775,6 +2910,7 @@ function toast(msg, type='') {
 }
 
 /* ── Init ──────────────────────────────────────────────────────── */
+setSource(source);      // the bar labels itself after whichever source is on
 loadEntries();
 </script>
 </body>
