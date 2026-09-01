@@ -776,6 +776,25 @@ check("the franchise name is stripped to find the season's own",
                     "American Horror Story Wiki"),
       ["American Horror Story/Murder House", "Murder House"])
 
+# ── A work that is the wiki itself ─────────────────────────
+# Solo Leveling's anime page carries a seventeen-name cast list, and finding
+# it was enough to stop the wiki's other four hundred pages being offered.
+check("a format of the wiki's own subject is the whole wiki",
+      [F.is_wiki_subject(t, "Solo Leveling Wiki") for t in
+       ("Solo Leveling (anime)", "Solo Leveling", "Solo Leveling: ARISE")],
+      [True, True, False])
+
+check("an index of the things is not one of the things",
+      [F.is_lorebook_page(t) for t in
+       ("List of Characters", "Index of Terms", "Tanjiro Kamado", "Listener")],
+      [False, False, True, True])
+
+# A wiki organised around a game-like world keeps kinds no amount of looking
+# at the biggest categories will reach: "Quests" holds seven pages.
+check("the small kinds of a game-like world are looked for by name",
+      [c in F.LORE_CATEGORIES for c in ("Quests", "Dungeons", "Gates", "Titles")],
+      [True, True, True, True])
+
 # ── Reporting ─────────────────────────────────────────────────────────────
 if FAILED:
     print(f"\n{len(FAILED)} check(s) failed:\n")

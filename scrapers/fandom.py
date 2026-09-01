@@ -190,6 +190,11 @@ LORE_CATEGORIES = [
     "Items", "Weapons", "Artifacts", "Objects", "Equipment",
     "Terminology", "Concepts", "Lore", "History", "Culture", "Religions",
     "Languages", "Timeline",
+    # Kinds a wiki organised around a game-like world keeps, which no amount of
+    # looking at the biggest categories will reach: Solo Leveling's "Quests"
+    # holds seven pages and lost its place to twenty-six larger ones.
+    "Quests", "Missions", "Dungeons", "Gates", "Titles", "Ranks", "Classes",
+    "Guilds", "Shadows", "Tribes", "Bloodlines", "Currencies", "Systems",
 ]
 
 
@@ -578,7 +583,9 @@ _NOT_AN_ENTRY = re.compile(
     r"|\b(paint book|art ?book|setting book|fan ?book|character book"
     r"|colou?ring book|novelization|novelisation|guide ?book|data ?book"
     r"|sticker book|activity book|picture book|calendar|soundtrack)\b"
-    r"|^(calendar|timeline|gallery|galleries)\b", re.I)
+    r"|^(calendar|timeline|gallery|galleries)\b"
+    # An index of the things is not one of the things.
+    r"|^(lists?|indexe?s?) of\b", re.I)
 
 
 def is_lorebook_page(title):
@@ -2818,16 +2825,20 @@ def scrape_article(url, notes="", budget=DEFAULT_BUDGET, ref=None, info=None,
 
     # The wiki's own subject, in one of its formats. There is nothing to narrow
     # to — everything on the wiki is in this story — so the answer is the whole
-    # wiki rather than the handful of pages sharing its name.
-    if ((not browse or not browse["groups"])
-            and is_wiki_subject(record["title"], info.get("name"))):
+    # wiki, and it is merged in rather than kept as a last resort. Solo
+    # Leveling's anime page happens to carry a seventeen-name cast list, and
+    # finding that was enough to stop the wiki's other four hundred pages ever
+    # being offered.
+    if is_wiki_subject(record["title"], info.get("name")):
         say = log.append if log is not None else (lambda _m: None)
         say(f"“{record['title']}” is what this whole wiki is about — "
             f"opening all of it.")
         try:
-            browse = browse_wiki(url, ref=ref, info=info, works=False) or browse
+            whole = browse_wiki(url, ref=ref, info=info, works=False)
         except FandomError:
-            pass
+            whole = None
+        if whole and whole.get("groups"):
+            browse = merge_browse(browse, whole) if browse else whole
     return profile, browse
 
 
