@@ -2193,10 +2193,85 @@ def subpage_sections(records, title, budget, arcs=None, skip=None):
     # but not without limit, or "compact" would produce the same entry as
     # "standard" for any character with a long synopsis.
     story_budget = max(share, min(len(story_idx) * MIN_ARC_BUDGET, share * 2))
-    fitted = dict(zip(story_idx, _fit([collected[i] for i in story_idx],
-                                      story_budget, keep_all=True)))
-    fitted.update(zip(other_idx, _fit([collected[i] for i in other_idx],
-                                      max(600, budget - share))))
+    fitted = _fit_part(collected, story_idx, story_budget, keep_all=True)
+    fitted.update(_fit_part(collected, other_idx, max(600, budget - share)))
+    return [fitted[i] for i in sorted(fitted)]
+
+
+def _story_indices(sections):
+    """
+    Which of an article's own sections make up its story.
+
+    By ancestry, not by title. Miles Morales' arcs are called "Collider
+    Crisis" and "Spider-Wars" — nothing in either name says "story", and only
+    the "Biography" heading above them does. Matching titles alone found the
+    one empty container and handed the story's whole share to it, which left
+    the arcs sharing the leftovers with the equipment list.
+    """
+    out, inside = [], None
+    for index, section in enumerate(sections):
+        level = section["level"]
+        if inside is not None and level <= inside:
+            inside = None
+        if inside is None and _STORY_TAB.search(section.get("title") or ""):
+            inside = level
+        if inside is not None:
+            out.append(index)
+    return out
+
+
+def _fit_part(sections, indices, budget, keep_all=False):
+    """
+    Fit a subset of sections, keeping track of which is which.
+
+    `fit_sections` prunes as it goes — a heading left with no text and no
+    surviving child is dropped — so what comes back is shorter than what went
+    in and cannot be zipped back onto the positions it came from. Doing that
+    welded one section's text under another section's heading and silently
+    lost the tail of the list. Each row carries its own index across instead.
+    """
+    tagged = [dict(sections[i], _at=i) for i in indices]
+    return {row.pop("_at"): row for row in _fit(tagged, budget, keep_all)}
+
+
+def _fit_article(sections, budget):
+    """
+    Budget an article's own sections, with the story taking the larger share.
+
+    A page that keeps its biography on a /History tab already has this: the
+    story tab is budgeted apart from the others so a dozen short relationship
+    sections cannot crowd it out. A page that keeps the biography on the
+    article itself had nothing of the kind, so "Biography" competed with
+    "Equipment" for an equal share — Miles Morales' thirty kilobytes of story
+    got the same room as three lines of gadgets.
+
+    Sections that are not the story keep the rest, and anything either side
+    does not use is handed back by `fit_sections`, so a page whose History is
+    a stub pointing at a tab loses nothing by this.
+    """
+    story = _story_indices(sections)
+    other = [i for i in range(len(sections)) if i not in set(story)]
+    if not story or not other:
+        return _fit(sections, budget)
+
+    # Neither side may reserve room it has no text to put in. Most wikis keep
+    # the story on a /History tab and leave a stub behind on the article, and
+    # reserving the story's share for that stub simply burned it — Gojo's
+    # entry lost two thousand characters of everything else to a heading with
+    # a sentence under it.
+    story_len = sum(len(sections[i]["text"] or "") for i in story)
+    other_len = sum(len(sections[i]["text"] or "") for i in other)
+    share = int(budget * STORY_TAB_SHARE)
+    share = min(share, story_len)
+    share = max(share, budget - other_len)
+    share = max(0, min(share, budget))
+
+    fitted = _fit_part(sections, story, share, keep_all=True)
+    # What the story did not actually spend goes to the rest, rather than
+    # falling between the two: a per-section ceiling can stop it using its
+    # share even when it had the text for it.
+    used = sum(len(row["text"] or "") for row in fitted.values())
+    fitted.update(_fit_part(sections, other, max(400, budget - used)))
     return [fitted[i] for i in sorted(fitted)]
 
 
@@ -2475,12 +2550,15 @@ def _html_fragment_to_text(fragment):
     """Rendered infobox cell → the text a reader would see."""
     text = _SUP_RE.sub("", fragment)
     text = _BLOCK_END_RE.sub("\n", text)
-    text = _TAG_RE.sub("", text)
-    text = html.unescape(text)
-    text = _REF_MARK_RE.sub("", text)
     items = []
     for line in re.split(r"[\n;]+", text):
-        item = re.sub(r"\s+", " ", line).strip(" ,;")
+        # Judged before the tags come off: once <u><b>Codenames</b></u> has
+        # been stripped to "Codenames" nothing tells it from a real alias.
+        if W.is_group_label(line):
+            continue
+        item = html.unescape(_TAG_RE.sub("", line))
+        item = _REF_MARK_RE.sub("", item)
+        item = re.sub(r"\s+", " ", item).strip(" ,;")
         if item and item not in items:
             items.append(item)
     return ", ".join(items)
@@ -2535,6 +2613,27 @@ _ROLE_LIKE = re.compile(
     r"|captain|commander|general|leader|head|owner|founder|manager|agent"
     r"|officer|lord|lady|boss|professor|doctor|member|student|teacher)\b",
     re.I)
+
+
+_DISPLAY_TITLE = re.compile(r"\{\{\s*DISPLAYTITLE\s*:\s*([^}]+)\}\}", re.I)
+
+
+def _display_title(raw):
+    """
+    The name a wiki states a page goes by, overriding both title and infobox.
+
+    {{DISPLAYTITLE:}} is how a wiki says "this article is about X" when the
+    article title cannot say it. The Spider-Verse wiki gives Miles Morales an
+    infobox whose name field reads "Spider-Man" — a name it shares with five
+    other characters there — and puts the real one here. Taking the infobox at
+    its word produced an entry called Spider-Man that collided with every
+    other Spider-person in the book.
+    """
+    match = _DISPLAY_TITLE.search(raw or "")
+    if not match:
+        return ""
+    shown = W.clean(match.group(1)).strip()
+    return shown if shown and len(shown) <= 60 else ""
 
 
 def _pick_name(rows, fallback):
@@ -2629,6 +2728,10 @@ def build_profile(ref, record, wiki_name=None, notes="", budget=DEFAULT_BUDGET,
             infobox_type = "Portable Infobox"
 
     name, name_field = _pick_name(rows, title)
+    shown = _display_title(raw)
+    if shown and shown.lower() != name.lower():
+        name = shown
+
 
     aliases = []
     facts = []
@@ -2652,7 +2755,10 @@ def build_profile(ref, record, wiki_name=None, notes="", budget=DEFAULT_BUDGET,
             "priority": section["priority"],
             "text":     W.clean(section["body"]),
         })
-    cleaned = _fit_sections(cleaned, budget)
+    # Fifty nested beat headings would each be cut to a fragment; fold them
+    # back into their parents first so the budget buys prose, not stubs.
+    cleaned = W.fold_deep_sections(cleaned, budget)
+    cleaned = _fit_article(cleaned, budget)
 
     # "Satoru Gojo" says what he is like; "Satoru Gojo/Synopsis" says what
     # happened to him, and for roleplay that is the half worth having.

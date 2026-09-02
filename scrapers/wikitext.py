@@ -203,6 +203,13 @@ TEMPLATE_UNWRAP_ALL = {
 TEMPLATE_QUOTE = {"quote", "quotes", "quotation", "quotations", "cquote",
                   "quotebox", "dialogue", "quote2", "qt", "epigraph"}
 
+# Wikis name a quote template after where it sits rather than after what it is
+# — the Spider-Verse wiki opens each chapter of a biography with
+# {{Biography Quote|Your name is Miles Morales...|Weber}}. Matched by name
+# alone those fell through to the generic handler, which printed the line as
+# if it were narration: an entry that told the model Miles is "you".
+_QUOTE_TEMPLATE = re.compile(r"(^|[ /])(quotes?|quotations?)$", re.I)
+
 # Named parameters that carry the visible label of an otherwise unknown
 # template — Fandom roster grids ({{CharPortal|image=…|name=…}}) are built
 # from these, and the names in them are exactly the lore we want.
@@ -367,7 +374,7 @@ def _render_template(body, depth):
 
     args, kwargs = _template_args(parts[1:])
 
-    if name in TEMPLATE_QUOTE:
+    if name in TEMPLATE_QUOTE or _QUOTE_TEMPLATE.search(name):
         said = re.sub(r"\s+", " ", clean(args[0], depth + 1)) if args else ""
         if not said:
             return ""
@@ -782,6 +789,24 @@ def is_blocked_field(field):
     return bool(_INFOBOX_BLOCK_RE.match(key) or _INFOBOX_CONTAINS_RE.search(key))
 
 
+_FIELD_SEGMENT = re.compile(r"<br\s*/?>|\n", re.I)
+
+
+def drop_group_labels(raw):
+    """
+    Strip headings a wiki has written *inside* a multi-value infobox field.
+
+    Judged on the markup, because that is the only place the difference
+    survives — see `is_group_label`. A field with one or two segments is left
+    alone: a single emphasised value is a value, not a heading over a list.
+    """
+    parts = _FIELD_SEGMENT.split(raw)
+    if len(parts) < 3:
+        return raw
+    kept = [p for p in parts if not is_group_label(p)]
+    return "<br>".join(kept) if kept and len(kept) != len(parts) else raw
+
+
 def parse_infobox(wikitext):
     """
     Extract an infobox as an ordered list of {label, value} dicts.
@@ -794,7 +819,7 @@ def parse_infobox(wikitext):
     for field, raw in fields:
         if is_blocked_field(field):
             continue
-        value = clean_inline(raw)
+        value = clean_inline(drop_group_labels(raw))
         if not value or value in ("-", "—", "N/A", "None", "TBA", "Unknown"):
             continue
         # A bare filename survived under a field name we do not recognise
@@ -1123,6 +1148,98 @@ MIN_MEANINGFUL_CHARS = 12
 # under MIN_SECTION_CHARS, because for a story a thin account of the ending
 # beats no account of it.
 MIN_ARC_CHARS = 130
+
+
+# A section needs room to say something. Below this it is a heading with a
+# fragment under it, and folding it into its parent says more than keeping it.
+READABLE_SECTION_CHARS = 460
+
+
+_EMPHASIS = re.compile(r"</?(?:u|b|i|em|strong|span|small)\b[^>]*>|'''|''")
+
+
+def is_group_label(segment):
+    """
+    True when a segment of a list field is a heading rather than a value.
+
+    Wikis group a long alias field with headings put *inside* the field:
+
+        |alias = <u>'''Codenames'''</u><br>Spider-Man<br>
+                 <u>'''Derivatives'''</u><br>Miles Morales<br>
+
+    Nothing tells "Codenames" from "Miles Morales" once the markup is stripped,
+    so it has to be judged before that: a segment that is nothing but
+    emphasised text is a label, and every real name in the field is plain.
+    Left in, "Codenames" and "In-Universe Media" became trigger words.
+    """
+    text = _EMPHASIS.sub("", segment).strip()
+    if not text or len(text) > 40:
+        return False
+    if segment.strip() == text:
+        return False          # never emphasised at all — an ordinary value
+    return _EMPHASIS.sub("|", segment).strip("| ").strip() == text
+
+
+def fold_deep_sections(sections, budget, floor=READABLE_SECTION_CHARS):
+    """
+    Fold the deepest headings into their parents until what is left can be read.
+
+    `fit_sections` shares a budget between sections and cuts each to fit, which
+    assumes a page has a handful of them. Some wikis write a life story as a
+    beat per heading instead — Miles Morales has fifty, nested five deep, one
+    for "Meeting Gwen Stacy" and another for "Battle at the Store". Shared
+    fifty ways a standard budget gives each about 260 characters, so the entry
+    came out as two dozen headings holding a sentence apiece, every one of them
+    cut mid-word.
+
+    Folding is by depth, deepest first, and stops the moment the survivors can
+    hold `floor` characters each. Stopping early is the point: folding all the
+    way merges the whole page into its scaffolding heading, which is the
+    opposite mistake and the one `collapse_sections` was written to avoid.
+    A page whose sections already fit is returned untouched.
+    """
+    rows = [dict(s) for s in sections]
+    room = max(1, int(budget // max(1, floor)))
+    while _prose_count(rows) > room:
+        deepest = max((r["level"] for r in rows), default=0)
+        if deepest <= 2:
+            break
+        # Levels 2 and 3 are where wikis put their arcs, and an arc apiece is
+        # what lets a long story be represented all the way to its end instead
+        # of in full up to wherever the budget ran out. Folding those away is
+        # a last resort, taken only when the page is still far too finely
+        # divided without it — Miles' five arcs are worth more than one
+        # "Biography" holding the first of them.
+        if deepest == 3 and _prose_count(rows) <= room * 2:
+            break
+        rows = _fold_level(rows, deepest)
+    return rows
+
+
+def _prose_count(rows):
+    return sum(1 for r in rows
+               if len((r.get("text") or "").strip()) >= MIN_MEANINGFUL_CHARS)
+
+
+def _fold_level(rows, level):
+    """Merge every heading at `level` or deeper into the section above it."""
+    out = []
+    for row in rows:
+        if row["level"] >= level and out:
+            host = out[-1]
+            text = (row.get("text") or "").strip()
+            if text:
+                # The heading is kept as a lead-in rather than dropped: it is
+                # what tells the reader "Losing Uncle Aaron" is a new beat and
+                # not the tail of the paragraph before it.
+                title = (row.get("title") or "").strip()
+                head = f"{title}: " if title else ""
+                host["text"] = ((host.get("text") or "").strip()
+                                + chr(10) * 2 + head + text).strip()
+                host["priority"] = min(host["priority"], row["priority"])
+            continue
+        out.append(row)
+    return out
 
 
 def fit_sections(sections, budget, cap_scale=1.0, keep_all=False):

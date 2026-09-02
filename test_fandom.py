@@ -795,6 +795,94 @@ check("the small kinds of a game-like world are looked for by name",
       [c in F.LORE_CATEGORIES for c in ("Quests", "Dungeons", "Gates", "Titles")],
       [True, True, True, True])
 
+# ── Headings a wiki puts inside a field ───────────────────────────────────
+# The Spider-Verse wiki groups a long alias list with underlined bold labels.
+# Stripped of markup they are indistinguishable from names, so "Codenames"
+# and "In-Universe Media" became trigger words on the entry.
+ALIAS_FIELD = ("<u>'''Codenames'''</u><br>Spider-Man<br>"
+               "<u>'''Derivatives'''</u><br>Miles Morales<br>Miles<br>"
+               "<u>'''In-Universe Media'''</u><br>Menace<br>")
+check("a wholly emphasised segment is a heading, not a value",
+      [W.is_group_label(s) for s in
+       ("<u>'''Codenames'''</u>", "'''Titles'''", "Spider-Man", "Miles")],
+      [True, True, False, False])
+check("a heading inside an alias field is dropped and the names kept",
+      F._split_aliases(W.clean_inline(W.drop_group_labels(ALIAS_FIELD))),
+      ["Spider-Man", "Miles Morales", "Miles", "Menace"])
+check("a field of one emphasised value keeps it",
+      W.drop_group_labels("'''Only Name'''"), "'''Only Name'''")
+check("a plain field is untouched",
+      W.drop_group_labels("Alpha<br>Beta<br>Gamma"), "Alpha<br>Beta<br>Gamma")
+
+# A quote template named after where it sits, not after what it is. Left to
+# the generic handler its line was printed as narration — an entry that told
+# the model Miles Morales is "you".
+check("a quote template is recognised by its name ending",
+      W.clean("{{Biography Quote|Your name is Miles Morales|Weber}}").strip(),
+      '"Your name is Miles Morales" — Weber')
+check("a template merely containing the word is not a quote",
+      "Rock" in W.clean("{{Quotient|Rock}}"), True)
+
+# ── The name a wiki says a page goes by ───────────────────────────────────
+# The Spider-Verse infobox calls Miles Morales "Spider-Man", a name he shares
+# with five other characters there; DISPLAYTITLE states the real one.
+check("DISPLAYTITLE gives the entry its name",
+      F._display_title("{{DISPLAYTITLE:Miles Morales}}\n{{Character|name=Spider-Man}}"),
+      "Miles Morales")
+check("a page without one is left to the infobox and the title",
+      F._display_title("{{Character|name=Iron Man}}"), "")
+
+# ── Fifty headings, one budget ────────────────────────────────────────────
+# Some wikis write a life story as a beat per heading nested five deep. Shared
+# fifty ways a standard budget gives each about 260 characters, so the entry
+# came out as two dozen stubs, every one cut mid-word.
+def beats():
+    rows = [{"title": "Biography", "level": 2, "priority": 1, "text": ""}]
+    for arc in ("Early Life", "Collider Crisis", "Spider-Wars"):
+        rows.append({"title": arc, "level": 3, "priority": 1, "text": ""})
+        for n in range(6):
+            rows.append({"title": f"{arc} beat {n}", "level": 4,
+                         "priority": 1, "text": "word " * 60})
+    rows.append({"title": "Personality", "level": 2, "priority": 1,
+                 "text": "word " * 60})
+    return rows
+
+folded = W.fold_deep_sections(beats(), 6000)
+check("the beats are folded into the arcs above them",
+      [s["title"] for s in folded],
+      ["Biography", "Early Life", "Collider Crisis", "Spider-Wars",
+       "Personality"])
+check("no prose is lost in the folding",
+      sum(s["text"].count("word") for s in folded),
+      sum(s["text"].count("word") for s in beats()))
+check("a beat keeps its heading as a lead-in",
+      "Early Life beat 3: " in folded[1]["text"], True)
+check("folding stops at the arcs rather than reaching the scaffolding",
+      folded[0]["text"], "")
+
+flat = [{"title": t, "level": 2, "priority": 1, "text": "word " * 60}
+        for t in ("Personality", "Abilities", "History")]
+check("a page whose sections already fit is untouched",
+      W.fold_deep_sections(flat, 6000), flat)
+
+# The story is named by ancestry: an arc called "Collider Crisis" says nothing
+# about being a story, and only the "Biography" heading above it does.
+check("the arcs under a story heading count as the story",
+      F._story_indices(folded), [0, 1, 2, 3])
+
+# ── Keeping text under its own heading ────────────────────────────────────
+# fit_sections prunes as it goes, so what comes back is shorter than what went
+# in and cannot be zipped back onto the positions it came from.
+ROWS = [{"title": "Kept", "level": 2, "priority": 1, "text": "word " * 200},
+        {"title": "Blank", "level": 2, "priority": 3, "text": ""},
+        {"title": "Also kept", "level": 2, "priority": 1, "text": "word " * 200}]
+part = F._fit_part(ROWS, [0, 1, 2], 4000)
+check("a pruned section does not shift the others onto its heading",
+      [(i, part[i]["title"]) for i in sorted(part)],
+      [(0, "Kept"), (2, "Also kept")])
+check("and no index is invented for one that went away",
+      1 in part, False)
+
 # ── Reporting ─────────────────────────────────────────────────────────────
 if FAILED:
     print(f"\n{len(FAILED)} check(s) failed:\n")

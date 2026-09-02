@@ -704,6 +704,60 @@ than `MIN_TIER_BUDGET`, so no entry is reduced to nothing. On a six-character
 import that is roughly a **28% smaller book with the protagonist untouched**.
 
 
+### A life story told in fifty headings
+
+Most wikis write a character's history as a handful of fat sections. Some write
+it as a beat per heading, nested five deep — the Spider-Verse wiki gives Miles
+Morales fifty of them, one for "Meeting Gwen Stacy" and another for "Battle at
+the Store". Shared fifty ways, a standard budget buys about 260 characters
+each, so the entry arrived as two dozen stubs, every one cut mid-word, and the
+last half of his life missing entirely.
+
+`fold_deep_sections` folds the deepest headings into their parents until what
+survives can hold a readable amount, keeping each heading as a lead-in so the
+beats still read as beats. It stops at the arc level rather than folding all
+the way: an arc apiece is what lets a long story be represented **to its end**
+instead of in full up to wherever the budget ran out. A page whose sections
+already fit is returned untouched, so nothing changes for the wikis that were
+already fine.
+
+The story is then budgeted ahead of the rest of the page, the way a `/History`
+tab always was. It is identified by **ancestry, not by title** — an arc called
+"Collider Crisis" says nothing about being a story, and only the "Biography"
+heading above it does. Neither side may reserve room it has no text to fill,
+and whatever the story does not spend goes back to the rest, so a page that
+keeps its history on a tab loses nothing to a stub.
+
+| page | before | after |
+|---|---|---|
+| Miles Morales | 24 stubs, ends at chapter three | 5 arcs, whole life |
+| Tony Stark | 1,283 chars | 5,787 chars |
+| Satoru Gojo | 9,124 chars | 9,579 chars |
+| Koichi Haimawari | 10,028 chars | 10,431 chars |
+
+Three smaller things the same wiki turned up:
+
+- **Headings hidden inside a field.** The alias list is grouped with
+  `<u>'''Codenames'''</u>` labels. Once the markup is stripped nothing tells
+  "Codenames" from "Miles Morales", so `is_group_label` judges it *before*
+  that — a segment that is nothing but emphasised text is a label. Otherwise
+  "Codenames" and "In-Universe Media" become trigger words.
+- **A quote template named after where it sits.** `{{Biography Quote}}` did not
+  match the quote list by name, so its line was printed as narration: an entry
+  that told the model Miles is "you". Quote templates are now matched by their
+  name ending, and the line comes out attributed to whoever said it.
+- **`{{DISPLAYTITLE:}}` wins.** This wiki's infobox calls Miles "Spider-Man", a
+  name he shares with five other characters on it. Where a wiki states the
+  page's name outright, that is the entry's name; the infobox one stays on as a
+  trigger key.
+
+One bug found while fixing those, which affected every wiki: `fit_sections`
+prunes as it goes, so what comes back is shorter than what went in and could
+not be zipped back onto the positions it came from. That welded one section's
+text under another section's heading and silently dropped the tail of the list.
+`_fit_part` carries each row's own index across instead.
+
+
 ### Will it actually work?
 
 A lorebook fails quietly. SillyTavern activates entries until the token budget
